@@ -1,6 +1,7 @@
 using RefactorOrders.DTOs;
 using RefactorOrders.Models;
 using RefactorOrders.Repositories;
+using RefactorOrders.Services.Pricing;
 
 namespace RefactorOrders.Services;
 
@@ -8,13 +9,19 @@ public class OrderService : IOrderService
 {
     private readonly IOrderRepository _repository;
     private readonly ILogger<OrderService> _logger;
+    private readonly IDiscountStrategy _discountStrategy;
+    private readonly ITaxStrategy _taxStrategy;
 
     public OrderService(
         IOrderRepository repository,
-        ILogger<OrderService> logger)
+        ILogger<OrderService> logger,
+        IDiscountStrategy discountStrategy,
+        ITaxStrategy taxStrategy)
     {
         _repository = repository;
         _logger = logger;
+        _discountStrategy = discountStrategy;
+        _taxStrategy = taxStrategy;
     }
 
     public async Task<Order> CreateOrderAsync(
@@ -38,13 +45,8 @@ public class OrderService : IOrderService
             request.CustomerEmail,
             cancellationToken);
 
-        var discountPercent = customer?.Tier switch
-        {
-            "Gold" => 15m,
-            "Silver" => 10m,
-            "Bronze" => 5m,
-            _ => 0m
-        };
+        var discountPercent = _discountStrategy.GetDiscountPercent(
+            customer?.Tier);
 
         var orderItems = new List<OrderItem>();
         decimal subtotal = 0;
@@ -91,7 +93,7 @@ public class OrderService : IOrderService
 
         var afterDiscount = subtotal - discountAmount;
 
-        var taxRate = GetTaxRate(request.State);
+        var taxRate = _taxStrategy.GetTaxRate(request.State);
         var taxAmount = afterDiscount * taxRate;
         var totalAmount = afterDiscount + taxAmount;
 
@@ -177,14 +179,4 @@ public class OrderService : IOrderService
         return true;
     }
 
-    private static decimal GetTaxRate(string state)
-    {
-        return state switch
-        {
-            "DE" or "MT" or "OR" or "NH" => 0m,
-            "CA" => 0.0725m,
-            "NY" => 0.08m,
-            _ => 0.18m
-        };
-    }
 }
