@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using QuotesApi.Models;
 using QuotesApi.Repositories;
+using QuotesApi.Services;
 
 namespace QuotesApi.Extensions;
 
@@ -43,6 +44,7 @@ public static class QuoteEndpointExtensions
         group.MapPost("/", async (
             CreateQuoteRequest request,
             IQuoteRepository repository,
+            IQuoteTextNormalizer normalizer,
             CancellationToken cancellationToken) =>
         {
             var errors = new Dictionary<string, string[]>();
@@ -64,8 +66,8 @@ public static class QuoteEndpointExtensions
 
             var quote = new Quote
             {
-                Author = request.Author.Trim(),
-                Text = request.Text.Trim()
+                Author = normalizer.Normalize(request.Author),
+                Text = normalizer.Normalize(request.Text)
             };
 
             var created = await repository.AddAsync(

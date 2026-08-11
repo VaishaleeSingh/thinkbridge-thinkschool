@@ -18,7 +18,14 @@ public class Collection
         OwnerId = ownerId;
     }
 
-    public void AddItem(int quoteId)
+    // addedAt comes from the caller rather than the entity reading the
+    // clock itself. Entities are plain data + invariants — they don't
+    // take IClock as a constructor dependency (EF has to be able to
+    // materialize them, and "what time is it" isn't a domain concern).
+    // The application layer (the endpoint below) resolves IClock via DI
+    // and passes the instant in, which is also what makes this testable
+    // with a fixed value instead of "assert it's approximately now".
+    public void AddItem(int quoteId, DateTimeOffset addedAt)
     {
         if (Items.Count >= 50)
             throw new InvalidOperationException(
@@ -28,7 +35,7 @@ public class Collection
             throw new InvalidOperationException(
                 "This quote is already in the collection.");
 
-        Items.Add(new CollectionItem(quoteId));
+        Items.Add(new CollectionItem(quoteId, addedAt));
     }
 
     public void RemoveItem(int quoteId)
@@ -65,9 +72,9 @@ public class CollectionItem
     {
     }
 
-    public CollectionItem(int quoteId)
+    public CollectionItem(int quoteId, DateTimeOffset addedAt)
     {
         QuoteId = quoteId;
-        AddedAt = DateTime.UtcNow;
+        AddedAt = addedAt.UtcDateTime;
     }
 }

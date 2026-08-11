@@ -34,8 +34,12 @@ public class QuotesDbContext : DbContext
                 item.WithOwner()
                     .HasForeignKey("CollectionId");
 
+                item.Property<int>("CollectionId")
+                    .ValueGeneratedNever();
+
                 item.Property(x => x.QuoteId)
-                    .IsRequired();
+                    .IsRequired()
+                    .ValueGeneratedNever();
 
                 item.Property(x => x.AddedAt)
                     .IsRequired();
