@@ -17,18 +17,25 @@ public interface IAuthService
         CancellationToken cancellationToken);
 
     string HashPassword(string password);
+    string GenerateAccessToken(User user);
 }
 
 public sealed class AuthService : IAuthService
 {
     private readonly QuotesDbContext _db;
     private readonly IConfiguration _config;
+    private readonly IRefreshTokenService _refreshTokenService;
     private readonly ILogger<AuthService> _logger;
 
-    public AuthService(QuotesDbContext db, IConfiguration config, ILogger<AuthService> logger)
+    public AuthService(
+        QuotesDbContext db,
+        IConfiguration config,
+        IRefreshTokenService refreshTokenService,
+        ILogger<AuthService> logger)
     {
         _db = db;
         _config = config;
+        _refreshTokenService = refreshTokenService;
         _logger = logger;
     }
 
@@ -55,8 +62,8 @@ public sealed class AuthService : IAuthService
         }
 
         var accessToken = GenerateAccessToken(user);
-        var refreshToken = GenerateRefreshToken();
-        const int expiresIn = 3600; // 1 hour in seconds
+        var refreshToken = await _refreshTokenService.GenerateTokenAsync(user.Id, cancellationToken);
+        const int expiresIn = 900; // 15 minutes in seconds
 
         _logger.LogInformation("User {Email} logged in successfully", email);
 
@@ -69,7 +76,7 @@ public sealed class AuthService : IAuthService
         return hasher.HashPassword(new User(), password);
     }
 
-    private string GenerateAccessToken(User user)
+    public string GenerateAccessToken(User user)
     {
         var key = _config["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key not configured");
         var issuer = _config["Jwt:Issuer"] ?? "QuotesApi";
@@ -95,11 +102,4 @@ public sealed class AuthService : IAuthService
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private static string GenerateRefreshToken()
-    {
-        var randomNumber = new byte[32];
-        using var rng = System.Security.Cryptography.RandomNumberGenerator.Create();
-        rng.GetBytes(randomNumber);
-        return Convert.ToBase64String(randomNumber);
-    }
 }

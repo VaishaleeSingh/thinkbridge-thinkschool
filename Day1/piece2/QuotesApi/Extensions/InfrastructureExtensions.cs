@@ -38,6 +38,7 @@ public static class InfrastructureExtensions
 
         // Scoped — auth service needs DbContext for user lookup
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 
         // JWT authentication
         var jwtKey = configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key not configured");
