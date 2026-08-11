@@ -47,26 +47,37 @@ public static class QuoteEndpointExtensions
             IQuoteTextNormalizer normalizer,
             CancellationToken cancellationToken) =>
         {
-            // Normalize input first
-            var normalizedAuthor = normalizer.Normalize(request.Author ?? "");
-            var normalizedText = normalizer.Normalize(request.Text ?? "");
+            var errors = new Dictionary<string, string[]>();
 
-            // Use the rich domain model's factory method to validate
-            var (quote, error) = Quote.Create(normalizedAuthor, normalizedText);
+            if (string.IsNullOrWhiteSpace(request.Author))
+                errors["author"] = new[] { "Author is required." };
 
-            if (quote is null)
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["quote"] = new[] { error! }
-                });
+            if (string.IsNullOrWhiteSpace(request.Text))
+                errors["text"] = new[] { "Text is required." };
 
-            var created = await repository.AddAsync(quote, cancellationToken);
+            if (request.Author?.Length > 200)
+                errors["author"] = new[] { "Author must be 200 characters or less." };
+
+            if (request.Text?.Length > 1000)
+                errors["text"] = new[] { "Text must be 1000 characters or less." };
+
+            if (errors.Count > 0)
+                return Results.ValidationProblem(errors);
+
+            var quote = new Quote
+            {
+                Author = normalizer.Normalize(request.Author),
+                Text = normalizer.Normalize(request.Text)
+            };
+
+            var created = await repository.AddAsync(
+                quote,
+                cancellationToken);
 
             return Results.Created(
                 $"/api/quotes/{created.Id}",
                 created);
-        })
-            .RequireAuthorization();
+        });
 
         group.MapGet("/{id:int}", async (
             int id,
@@ -94,8 +105,7 @@ public static class QuoteEndpointExtensions
             return deleted
                 ? Results.NoContent()
                 : Results.NotFound();
-        })
-            .RequireAuthorization();
+        });
 
         return app;
     }
