@@ -65,7 +65,8 @@ public static class QuoteEndpointExtensions
             return Results.Created(
                 $"/api/quotes/{created.Id}",
                 created);
-        });
+        })
+            .RequireAuthorization();
 
         group.MapGet("/{id:int}", async (
             int id,
@@ -93,7 +94,8 @@ public static class QuoteEndpointExtensions
             return deleted
                 ? Results.NoContent()
                 : Results.NotFound();
-        });
+        })
+            .RequireAuthorization();
 
         return app;
     }

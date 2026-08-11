@@ -1,4 +1,7 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using QuotesApi.Data;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
@@ -32,6 +35,38 @@ public static class InfrastructureExtensions
         // A new instance per resolution is fine because there's no
         // per-request or app-wide state to keep consistent.
         services.AddTransient<IQuoteTextNormalizer, QuoteTextNormalizer>();
+
+        // Scoped — auth service needs DbContext for user lookup
+        services.AddScoped<IAuthService, AuthService>();
+
+        // JWT authentication
+        var jwtKey = configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key not configured");
+        var jwtIssuer = configuration["Jwt:Issuer"] ?? "QuotesApi";
+        var jwtAudience = configuration["Jwt:Audience"] ?? "QuotesApi";
+
+        services
+            .AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            })
+            .AddJwtBearer(options =>
+            {
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(
+                        Encoding.UTF8.GetBytes(jwtKey)),
+                    ValidateIssuer = true,
+                    ValidIssuer = jwtIssuer,
+                    ValidateAudience = true,
+                    ValidAudience = jwtAudience,
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.Zero
+                };
+            });
+
+        services.AddAuthorization();
 
         return services;
     }
