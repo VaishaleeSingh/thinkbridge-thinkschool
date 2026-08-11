@@ -16,6 +16,7 @@ public static class InfrastructureExtensions
                 ?? "Data Source=quotes.db"));
 
         services.AddScoped<IQuoteRepository, QuoteRepository>();
+        services.AddScoped<ICollectionRepository, CollectionRepository>();
 
         return services;
     }
