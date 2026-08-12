@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quotes.Tests.Integration.TestDoubles;
 using QuotesApi.Data;
 using QuotesApi.Services;
@@ -86,10 +88,24 @@ public class QuotesApiFactory : WebApplicationFactory<Program>
             // Source=quotes.db") registration from InfrastructureExtensions
             // and replace it with one bound to our open in-memory
             // connection instead.
-            var dbContextDescriptor = services.SingleOrDefault(
-                d => d.ServiceType == typeof(DbContextOptions<QuotesDbContext>));
-            if (dbContextDescriptor is not null)
-                services.Remove(dbContextDescriptor);
+            //
+            // Removing DbContextOptions<QuotesDbContext> alone happened to
+            // be enough here, but only because both the real registration
+            // and this one call UseSqlite -- since EF Core 5,
+            // AddDbContext<T>(...) registers its configuration lambda as
+            // an additive IDbContextOptionsConfiguration<T> entry rather
+            // than replacing a prior one, so the ORIGINAL UseSqlite(...)
+            // call still runs too; it just happens to get silently
+            // overwritten by this second UseSqlite(...) call targeting the
+            // same provider extension slot. Swap the provider entirely
+            // (as Quotes.Tests.Integration.SqlServer's factory does) and
+            // that silent overwrite becomes a hard EF Core error instead
+            // ("services for database providers X, Y have been
+            // registered") -- discovered building that project. Removing
+            // both descriptor types here too costs nothing and keeps this
+            // factory correct if it's ever pointed at a different provider.
+            services.RemoveAll<DbContextOptions<QuotesDbContext>>();
+            services.RemoveAll<IDbContextOptionsConfiguration<QuotesDbContext>>();
 
             services.AddDbContext<QuotesDbContext>(options =>
                 options.UseSqlite(_connection));
