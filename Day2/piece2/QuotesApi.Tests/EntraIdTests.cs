@@ -61,20 +61,36 @@ public class EntraIdTests : IAsyncLifetime
     /// issues: same secret, same issuer, same audience as the "CustomJwt"
     /// scheme configured in InfrastructureExtensions.cs. Because we know the
     /// secret, we can sign it ourselves and the API will accept it as valid.
+    ///
+    /// Every caller gets the same default scopes (read + write + delete) —
+    /// this project has no roles/admin table, so scope alone never decides
+    /// who can delete a specific quote; ownership does (see
+    /// MustOwnQuoteHandler). Pass a narrower `scopes` list to test what
+    /// happens when a required scope is missing, and a different `userId`
+    /// to simulate a second, unrelated caller.
     /// </summary>
-    private static string CreateCustomJwt(DateTime? notBefore = null, DateTime? expires = null)
+    private static string CreateCustomJwt(
+        string userId = "user-123",
+        IEnumerable<string>? scopes = null,
+        DateTime? notBefore = null,
+        DateTime? expires = null)
     {
         const string secret = "your-existing-custom-jwt-secret-keep-this-same";
         var signingKey = Encoding.UTF8.GetBytes(secret);
 
+        var claims = new List<Claim>
+        {
+            new Claim("sub", userId),
+            new Claim("email", $"{userId}@example.com")
+        };
+
+        foreach (var scope in scopes ?? new[] { "quotes.read", "quotes.write", "quotes.delete" })
+            claims.Add(new Claim("scope", scope));
+
         var handler = new JwtSecurityTokenHandler();
         var token = handler.CreateToken(new SecurityTokenDescriptor
         {
-            Subject = new ClaimsIdentity(new[]
-            {
-                new Claim("sub", "user-123"),
-                new Claim("email", "user@example.com")
-            }),
+            Subject = new ClaimsIdentity(claims),
             NotBefore = notBefore ?? DateTime.UtcNow,
             Expires = expires ?? DateTime.UtcNow.AddHours(1),
             Issuer = "https://yourapp.com",
@@ -112,7 +128,12 @@ public class EntraIdTests : IAsyncLifetime
             Subject = new ClaimsIdentity(new[]
             {
                 new Claim("sub", "entra-user-456"),
-                new Claim("email", "spa-user@company.com")
+                new Claim("email", "spa-user@company.com"),
+                // Shape of a real Entra delegated-permission claim: one
+                // claim, space-separated values. ScopeClaimsTransformation
+                // splits this into individual "scope" claims so the same
+                // policies work regardless of which scheme authenticated.
+                new Claim("scp", "quotes.read quotes.write quotes.delete")
             }),
             Expires = DateTime.UtcNow.AddHours(1),
             Issuer = "https://login.microsoftonline.com/f774bb68-0575-4cd2-9d4c-3b4e593d1110/v2.0",
@@ -290,6 +311,101 @@ public class EntraIdTests : IAsyncLifetime
         // Act: delete it, using the same token.
         var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, $"/api/quotes/{quoteId}");
         deleteRequest.Headers.Add("Authorization", $"Bearer {token}");
+
+        var deleteResponse = await _client.SendAsync(deleteRequest);
+
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+    }
+
+    // =========================================================================
+    // AUTHORIZATION POLICY + OWNERSHIP TESTS (Day 3, part 2)
+    // =========================================================================
+
+    [Fact]
+    public async Task CreateQuote_WithoutWriteScope_Returns403()
+    {
+        // The token is perfectly valid and authenticates fine — it just
+        // doesn't carry "quotes.write". RequireAuthorization("can-edit-quotes")
+        // should block this with 403, not 401: 401 means "I don't know who
+        // you are," 403 means "I know who you are, and the answer is no."
+        var token = CreateCustomJwt(scopes: new[] { "quotes.read" });
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/quotes")
+        {
+            Content = new StringContent(
+                """{"author":"Test","text":"Should be blocked by policy"}""",
+                Encoding.UTF8,
+                "application/json")
+        };
+        request.Headers.Add("Authorization", $"Bearer {token}");
+
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteQuote_AsDifferentUser_Returns403()
+    {
+        // user-A creates a quote...
+        var ownerToken = CreateCustomJwt(userId: "user-A");
+
+        var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/quotes")
+        {
+            Content = new StringContent(
+                """{"author":"Owner Test","text":"Only user-A should be able to delete this"}""",
+                Encoding.UTF8,
+                "application/json")
+        };
+        createRequest.Headers.Add("Authorization", $"Bearer {ownerToken}");
+
+        var createResponse = await _client.SendAsync(createRequest);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var location = createResponse.Headers.Location?.OriginalString;
+        Assert.NotNull(location);
+        var quoteId = location.Split("/").Last();
+
+        // ...user-B — who has every scope, including quotes.delete — tries
+        // to delete it. The "can-delete-quotes" policy lets this through
+        // (user-B genuinely has delete permission in general); it's the
+        // ownership check inside the endpoint that has to stop it here.
+        var otherUserToken = CreateCustomJwt(userId: "user-B");
+
+        var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, $"/api/quotes/{quoteId}");
+        deleteRequest.Headers.Add("Authorization", $"Bearer {otherUserToken}");
+
+        var deleteResponse = await _client.SendAsync(deleteRequest);
+
+        Assert.Equal(HttpStatusCode.Forbidden, deleteResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteQuote_AsOwner_Returns204()
+    {
+        // Same shape as the test above, but this time the SAME user who
+        // created the quote is the one deleting it — proves the ownership
+        // check isn't just blocking everyone, only non-owners.
+        var ownerToken = CreateCustomJwt(userId: "user-C");
+
+        var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/quotes")
+        {
+            Content = new StringContent(
+                """{"author":"Owner Test 2","text":"user-C owns this one and can delete it"}""",
+                Encoding.UTF8,
+                "application/json")
+        };
+        createRequest.Headers.Add("Authorization", $"Bearer {ownerToken}");
+
+        var createResponse = await _client.SendAsync(createRequest);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var location = createResponse.Headers.Location?.OriginalString;
+        Assert.NotNull(location);
+        var quoteId = location.Split("/").Last();
+
+        var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, $"/api/quotes/{quoteId}");
+        deleteRequest.Headers.Add("Authorization", $"Bearer {ownerToken}");
 
         var deleteResponse = await _client.SendAsync(deleteRequest);
 

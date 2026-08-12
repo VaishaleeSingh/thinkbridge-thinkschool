@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using QuotesApi.Authorization;
 using QuotesApi.Data;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
@@ -186,11 +188,53 @@ public static class InfrastructureExtensions
                 };
             });
 
-        // Authorization is the step that actually enforces "you must be
-        // authenticated" on endpoints marked with .RequireAuthorization().
-        // Adding authentication above without this would validate tokens
-        // when present but never require one in the first place.
-        services.AddAuthorization();
+        // ------------------------------------------------------------
+        // STEP 4: Authorization policies and claims (Day 3, part 2)
+        // ------------------------------------------------------------
+        // Authentication (above) only answers "who is this." Everything
+        // below answers the separate question "are they allowed to do
+        // this." Two different mechanisms are used, because two different
+        // kinds of rule are needed:
+        //
+        //   - can-read-quotes / can-edit-quotes / can-delete-quotes are
+        //     CLAIM-based policies: they can be decided purely from the
+        //     caller's token, before any endpoint code runs at all. See
+        //     .RequireAuthorization("can-edit-quotes") etc. in
+        //     QuoteEndpointExtensions.cs.
+        //
+        //   - "Can this caller delete THIS SPECIFIC quote" cannot be
+        //     answered from the token alone — it depends on who created
+        //     that particular row in the database. That's a RESOURCE-based
+        //     rule (MustOwnQuoteRequirement/MustOwnQuoteHandler), checked
+        //     imperatively inside the DELETE endpoint after the quote has
+        //     been loaded, not declared here as a policy.
+        //
+        // This project deliberately has no roles/admin table. Every
+        // authenticated caller gets the same three scopes (see where
+        // tokens are issued/tested); the ownership check is what actually
+        // stops one user from deleting another user's quote, not scope.
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy("can-read-quotes", policy =>
+                policy.RequireClaim("scope", "quotes.read"));
+
+            options.AddPolicy("can-edit-quotes", policy =>
+                policy.RequireClaim("scope", "quotes.write"));
+
+            options.AddPolicy("can-delete-quotes", policy =>
+                policy.RequireClaim("scope", "quotes.delete"));
+        });
+
+        // Normalizes Entra ID's "scp"/"roles" claims into the same "scope"
+        // claim shape our own tokens use, so the policies above work
+        // identically no matter which scheme authenticated the caller.
+        // See ScopeClaimsTransformation for why this is necessary.
+        services.AddTransient<IClaimsTransformation, ScopeClaimsTransformation>();
+
+        // Registers the resource-based ownership rule so it can be
+        // resolved via IAuthorizationService.AuthorizeAsync(...) inside
+        // the DELETE endpoint.
+        services.AddSingleton<IAuthorizationHandler, MustOwnQuoteHandler>();
 
         return services;
     }
