@@ -24,13 +24,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore (integration tests)
+      - name: Restore (integration tests: QuotesApi.Tests)
         run: dotnet restore Day3/piece2/QuotesApi.Tests/QuotesApi.Tests.csproj
 
-      - name: Build (integration tests)
+      - name: Build (integration tests: QuotesApi.Tests)
         run: dotnet build Day3/piece2/QuotesApi.Tests/QuotesApi.Tests.csproj --no-restore --configuration Release
 
-      - name: Test (integration tests)
+      - name: Test (integration tests: QuotesApi.Tests)
         run: dotnet test Day3/piece2/QuotesApi.Tests/QuotesApi.Tests.csproj --no-build --configuration Release --logger "console;verbosity=normal"
 
       # Separate project, separate steps: unit tests have no HTTP/host
@@ -44,3 +44,16 @@ jobs:
 
       - name: Test (unit tests)
         run: dotnet test Day3/piece2/Quotes.Tests.Unit/Quotes.Tests.Unit.csproj --no-build --configuration Release --logger "console;verbosity=normal"
+
+      # A third, separate project: Quotes.Tests.Integration also uses
+      # WebApplicationFactory (same as QuotesApi.Tests above), but boots
+      # the app against a fresh, isolated in-memory SQLite database and
+      # a FakeClock per test, instead of the real on-disk quotes.db.
+      - name: Restore (integration tests: Quotes.Tests.Integration)
+        run: dotnet restore Day3/piece2/Quotes.Tests.Integration/Quotes.Tests.Integration.csproj
+
+      - name: Build (integration tests: Quotes.Tests.Integration)
+        run: dotnet build Day3/piece2/Quotes.Tests.Integration/Quotes.Tests.Integration.csproj --no-restore --configuration Release
+
+      - name: Test (integration tests: Quotes.Tests.Integration)
+        run: dotnet test Day3/piece2/Quotes.Tests.Integration/Quotes.Tests.Integration.csproj --no-build --configuration Release --logger "console;verbosity=normal"
