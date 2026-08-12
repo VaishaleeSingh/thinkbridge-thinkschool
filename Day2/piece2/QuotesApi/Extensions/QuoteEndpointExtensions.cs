@@ -5,13 +5,31 @@ using QuotesApi.Services;
 
 namespace QuotesApi.Extensions;
 
+/// <summary>
+/// All HTTP endpoints for /api/quotes live here. Each endpoint is a small
+/// function: read the request, ask a repository/service to do the real
+/// work, and translate the result into an HTTP response. There is no
+/// database or business logic directly in this file — that lives in
+/// QuoteRepository and friends.
+/// </summary>
 public static class QuoteEndpointExtensions
 {
     public static IEndpointRouteBuilder MapQuoteEndpoints(
         this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/quotes");
+        // MapGroup("/api/quotes") means every route below is automatically
+        // prefixed with /api/quotes (so "/" really means GET /api/quotes).
+        //
+        // .RequireAuthorization() (added Day 3) means every endpoint in this
+        // group needs a valid token — either our own custom JWT or an Entra
+        // ID token; see InfrastructureExtensions.cs for how that's decided.
+        // Without this line, a request with no token at all would still
+        // succeed, because authentication only checks a token IF one is
+        // present — it doesn't demand one unless something tells it to.
+        var group = app.MapGroup("/api/quotes")
+            .RequireAuthorization();
 
+        // GET /api/quotes?page=1&size=10 — list quotes, paged.
         group.MapGet("/", async (
             int page,
             int size,
@@ -41,6 +59,7 @@ public static class QuoteEndpointExtensions
             });
         });
 
+        // POST /api/quotes — create a new quote.
         group.MapPost("/", async (
             CreateQuoteRequest request,
             IQuoteRepository repository,
@@ -79,6 +98,7 @@ public static class QuoteEndpointExtensions
                 created);
         });
 
+        // GET /api/quotes/{id} — fetch a single quote.
         group.MapGet("/{id:int}", async (
             int id,
             IQuoteRepository repository,
@@ -93,6 +113,7 @@ public static class QuoteEndpointExtensions
                 : Results.Ok(quote);
         });
 
+        // DELETE /api/quotes/{id} — remove a quote.
         group.MapDelete("/{id:int}", async (
             int id,
             IQuoteRepository repository,
@@ -111,4 +132,5 @@ public static class QuoteEndpointExtensions
     }
 }
 
+/// <summary>Shape of the JSON body for POST /api/quotes.</summary>
 public record CreateQuoteRequest(string? Author, string? Text);
