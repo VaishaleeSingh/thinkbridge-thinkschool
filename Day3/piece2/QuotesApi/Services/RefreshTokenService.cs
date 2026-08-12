@@ -33,13 +33,15 @@ public sealed class RefreshTokenService : IRefreshTokenService
 {
     private readonly QuotesDbContext _db;
     private readonly ILogger<RefreshTokenService> _logger;
+    private readonly IClock _clock;
     private const int TokenLength = 32;
     private const int ExpiryDays = 7;
 
-    public RefreshTokenService(QuotesDbContext db, ILogger<RefreshTokenService> logger)
+    public RefreshTokenService(QuotesDbContext db, ILogger<RefreshTokenService> logger, IClock clock)
     {
         _db = db;
         _logger = logger;
+        _clock = clock;
     }
 
     public async Task<string> GenerateTokenAsync(int userId, CancellationToken cancellationToken, string? familyId = null)
@@ -60,8 +62,8 @@ public sealed class RefreshTokenService : IRefreshTokenService
         {
             UserId = userId,
             TokenHash = tokenHash,
-            ExpiresAt = DateTime.UtcNow.AddDays(ExpiryDays),
-            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = _clock.UtcNow.UtcDateTime.AddDays(ExpiryDays),
+            CreatedAt = _clock.UtcNow.UtcDateTime,
             FamilyId = resolvedFamilyId
         };
 
@@ -104,7 +106,7 @@ public sealed class RefreshTokenService : IRefreshTokenService
         var token = await _db.RefreshTokens.FindAsync(new object[] { tokenId }, cancellationToken: cancellationToken);
         if (token is not null)
         {
-            token.RevokedAt = DateTime.UtcNow;
+            token.RevokedAt = _clock.UtcNow.UtcDateTime;
             await _db.SaveChangesAsync(cancellationToken);
         }
     }
@@ -124,7 +126,7 @@ public sealed class RefreshTokenService : IRefreshTokenService
 
         foreach (var familyToken in familyTokens)
         {
-            familyToken.RevokedAt = DateTime.UtcNow;
+            familyToken.RevokedAt = _clock.UtcNow.UtcDateTime;
         }
 
         await _db.SaveChangesAsync(cancellationToken);

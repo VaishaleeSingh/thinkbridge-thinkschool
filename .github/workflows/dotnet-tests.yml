@@ -24,11 +24,23 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore
+      - name: Restore (integration tests)
         run: dotnet restore Day3/piece2/QuotesApi.Tests/QuotesApi.Tests.csproj
 
-      - name: Build
+      - name: Build (integration tests)
         run: dotnet build Day3/piece2/QuotesApi.Tests/QuotesApi.Tests.csproj --no-restore --configuration Release
 
-      - name: Test
+      - name: Test (integration tests)
         run: dotnet test Day3/piece2/QuotesApi.Tests/QuotesApi.Tests.csproj --no-build --configuration Release --logger "console;verbosity=normal"
+
+      # Separate project, separate steps: unit tests have no HTTP/host
+      # bootstrapping (no WebApplicationFactory), so they build and run
+      # independently of the integration suite above.
+      - name: Restore (unit tests)
+        run: dotnet restore Day3/piece2/Quotes.Tests.Unit/Quotes.Tests.Unit.csproj
+
+      - name: Build (unit tests)
+        run: dotnet build Day3/piece2/Quotes.Tests.Unit/Quotes.Tests.Unit.csproj --no-restore --configuration Release
+
+      - name: Test (unit tests)
+        run: dotnet test Day3/piece2/Quotes.Tests.Unit/Quotes.Tests.Unit.csproj --no-build --configuration Release --logger "console;verbosity=normal"
