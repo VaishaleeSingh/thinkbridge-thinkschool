@@ -104,12 +104,16 @@ public static class QuoteEndpointExtensions
             var callerId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
                 ?? user.FindFirst("sub")?.Value;
 
-            var quote = new Quote
-            {
-                Author = normalizer.Normalize(request.Author),
-                Text = normalizer.Normalize(request.Text),
-                CreatedByUserId = callerId
-            };
+            // Quote.Create re-checks these same rules -- redundant here
+            // since the validation above already guarantees non-null,
+            // in-range values, but it means Quote.Create's own invariants
+            // can never silently drift out of sync with what this endpoint
+            // enforces, and any OTHER caller that skips this endpoint still
+            // gets the same guarantees for free.
+            var quote = Quote.Create(
+                normalizer.Normalize(request.Author!),
+                normalizer.Normalize(request.Text!),
+                callerId);
 
             var created = await repository.AddAsync(
                 quote,

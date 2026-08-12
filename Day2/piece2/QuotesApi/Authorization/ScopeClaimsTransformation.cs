@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Linq;
 using Microsoft.AspNetCore.Authentication;
 
 namespace QuotesApi.Authorization;
@@ -46,7 +47,20 @@ public class ScopeClaimsTransformation : IClaimsTransformation
 
         // Entra ID application permissions: already one claim per role,
         // just under a different claim type name than ours.
-        foreach (var roleClaim in identity.FindAll("roles"))
+        //
+        // ToList() here is not a style choice -- it's required for
+        // correctness. identity.FindAll("roles") is a lazy query over
+        // the identity's own live claims collection; calling
+        // identity.AddClaim(...) inside the loop mutates that same
+        // collection while it's still being enumerated, which throws
+        // InvalidOperationException ("Collection was modified") the
+        // instant a SECOND "roles" claim triggers another MoveNext().
+        // Snapshotting the roles first breaks that mutate-while-
+        // iterating cycle. This was previously untested and any Entra
+        // ID application-permission token (one or more "roles"
+        // claims) would crash every request during claims
+        // transformation -- before authorization even ran.
+        foreach (var roleClaim in identity.FindAll("roles").ToList())
             identity.AddClaim(new Claim("scope", roleClaim.Value));
 
         return Task.FromResult(principal);
