@@ -51,8 +51,30 @@ public class QuotesApiFactory : WebApplicationFactory<Program>
     /// Exposed so tests can advance/inspect "now" (e.g. asserting a
     /// timestamp the app wrote matches this exact instant) without
     /// reaching into the DI container themselves.
+    ///
+    /// DELIBERATELY seeded from the REAL wall clock (DateTimeOffset.UtcNow)
+    /// rather than a fixed, arbitrary date -- this is fixed for the
+    /// lifetime of one factory (every timestamp the app writes during a
+    /// single test still comes from this one frozen instant, which is
+    /// all the "fake clock" guarantee actually requires), but a
+    /// hardcoded date like 2026-06-01 will eventually sit in the PAST
+    /// relative to whenever the tests actually run.
+    ///
+    /// That's not hypothetical -- it happened on the first real test run
+    /// of this project. Two things check token validity against the REAL
+    /// system clock no matter what IClock the app is wired to:
+    /// ASP.NET Core's JWT bearer ValidateLifetime, and
+    /// RefreshToken.IsExpired (DateTime.UtcNow > ExpiresAt). Both are
+    /// outside this app's IClock abstraction entirely. Mint an access or
+    /// refresh token using a FakeClock "now" that's already in the past
+    /// by real-clock time, and every one of them comes back expired on
+    /// its very first use -- every authenticated request in the suite
+    /// failed with 401 for exactly this reason. Anchoring to real UtcNow
+    /// keeps the fake clock deterministic within a test while staying
+    /// permanently ahead of the wall clock that JWT validation actually
+    /// checks against.
     /// </summary>
-    public FakeClock Clock { get; } = new(new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
+    public FakeClock Clock { get; } = new(DateTimeOffset.UtcNow);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
