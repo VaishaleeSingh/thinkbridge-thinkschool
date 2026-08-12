@@ -15,7 +15,7 @@ namespace QuotesApi.Extensions;
 /// <summary>
 /// This file wires up everything the app needs before it can handle a
 /// single request: the database, the repositories, small helper services,
-/// and — as of Day 3 — authentication.
+/// authentication, and authorization.
 ///
 /// Everything lives inside one method, AddInfrastructure(), which Program.cs
 /// calls once at startup. Grouping registrations here (instead of writing
@@ -31,7 +31,7 @@ public static class InfrastructureExtensions
         // ------------------------------------------------------------
         // STEP 1: Database
         // ------------------------------------------------------------
-        // Scoped — one DbContext (and the repositories built on it) per
+        // Scoped -- one DbContext (and the repositories built on it) per
         // request. Sharing a DbContext across requests isn't thread-safe;
         // a shorter-than-request lifetime would just churn connections.
         services.AddDbContext<QuotesDbContext>(options =>
@@ -45,19 +45,26 @@ public static class InfrastructureExtensions
         // ------------------------------------------------------------
         // STEP 2: Small helper services
         // ------------------------------------------------------------
-        // Singleton — IClock holds no per-request state, so one instance
+        // Singleton -- IClock holds no per-request state, so one instance
         // can safely serve the app's whole lifetime. This is also what
         // makes it swappable in tests: register a FakeClock singleton
         // instead and every consumer sees the fixed instant.
         services.AddSingleton<IClock, QuotesApi.Services.SystemClock>();
 
-        // Transient — stateless, cheap to construct, nothing to share.
+        // Transient -- stateless, cheap to construct, nothing to share.
         // A new instance per resolution is fine because there's no
         // per-request or app-wide state to keep consistent.
         services.AddTransient<IQuoteTextNormalizer, QuoteTextNormalizer>();
 
+        // Scoped -- both talk to QuotesDbContext (itself scoped), so they
+        // need to live no longer than one request too, otherwise they'd
+        // end up holding onto a DbContext from a previous, already
+        // disposed request.
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IRefreshTokenService, RefreshTokenService>();
+
         // ------------------------------------------------------------
-        // STEP 3: Authentication (Day 3 — Entra ID + existing custom JWT)
+        // STEP 3: Authentication (Day 3 -- Entra ID + existing custom JWT)
         // ------------------------------------------------------------
         // WHY TWO AUTH SCHEMES?
         // Before Day 3, this API only understood tokens that our own
@@ -164,7 +171,7 @@ public static class InfrastructureExtensions
                         var tokenReader = new JwtSecurityTokenHandler();
 
                         // CanReadToken/ReadToken only parse the token's
-                        // structure — they do NOT check the signature.
+                        // structure -- they do NOT check the signature.
                         // Real validation still happens afterward, inside
                         // whichever scheme we forward to.
                         if (tokenReader.CanReadToken(rawToken))
@@ -189,30 +196,32 @@ public static class InfrastructureExtensions
             });
 
         // ------------------------------------------------------------
-        // STEP 4: Authorization policies and claims (Day 3, part 2)
+        // STEP 4: Authorization policies and claims
         // ------------------------------------------------------------
         // Authentication (above) only answers "who is this." Everything
         // below answers the separate question "are they allowed to do
         // this." Two different mechanisms are used, because two different
         // kinds of rule are needed:
         //
-        //   - can-read-quotes / can-edit-quotes / can-delete-quotes are
-        //     CLAIM-based policies: they can be decided purely from the
-        //     caller's token, before any endpoint code runs at all. See
-        //     .RequireAuthorization("can-edit-quotes") etc. in
-        //     QuoteEndpointExtensions.cs.
+        //   - can-read-quotes / can-edit-quotes / can-delete-quotes and
+        //     can-read-collections / can-edit-collections /
+        //     can-delete-collections are CLAIM-based policies: they can be
+        //     decided purely from the caller's token, before any endpoint
+        //     code runs at all. See .RequireAuthorization("...") in
+        //     QuoteEndpointExtensions.cs and CollectionEndpointExtensions.cs.
         //
         //   - "Can this caller delete THIS SPECIFIC quote" cannot be
-        //     answered from the token alone — it depends on who created
+        //     answered from the token alone -- it depends on who created
         //     that particular row in the database. That's a RESOURCE-based
         //     rule (MustOwnQuoteRequirement/MustOwnQuoteHandler), checked
         //     imperatively inside the DELETE endpoint after the quote has
         //     been loaded, not declared here as a policy.
         //
         // This project deliberately has no roles/admin table. Every
-        // authenticated caller gets the same three scopes (see where
-        // tokens are issued/tested); the ownership check is what actually
-        // stops one user from deleting another user's quote, not scope.
+        // authenticated caller gets the same six scopes (see where tokens
+        // are issued/tested); the ownership check on quotes is what
+        // actually stops one user from deleting another user's quote, not
+        // scope.
         services.AddAuthorization(options =>
         {
             options.AddPolicy("can-read-quotes", policy =>
@@ -223,6 +232,15 @@ public static class InfrastructureExtensions
 
             options.AddPolicy("can-delete-quotes", policy =>
                 policy.RequireClaim("scope", "quotes.delete"));
+
+            options.AddPolicy("can-read-collections", policy =>
+                policy.RequireClaim("scope", "collections.read"));
+
+            options.AddPolicy("can-edit-collections", policy =>
+                policy.RequireClaim("scope", "collections.write"));
+
+            options.AddPolicy("can-delete-collections", policy =>
+                policy.RequireClaim("scope", "collections.delete"));
         });
 
         // Normalizes Entra ID's "scp"/"roles" claims into the same "scope"
@@ -233,7 +251,7 @@ public static class InfrastructureExtensions
 
         // Registers the resource-based ownership rule so it can be
         // resolved via IAuthorizationService.AuthorizeAsync(...) inside
-        // the DELETE endpoint.
+        // the quote DELETE endpoint.
         services.AddSingleton<IAuthorizationHandler, MustOwnQuoteHandler>();
 
         return services;
