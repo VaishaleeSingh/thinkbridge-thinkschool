@@ -57,3 +57,22 @@ jobs:
 
       - name: Test (integration tests: Quotes.Tests.Integration)
         run: dotnet test Day3/piece2/Quotes.Tests.Integration/Quotes.Tests.Integration.csproj --no-build --configuration Release --logger "console;verbosity=normal"
+
+      # A fourth, separate project: Quotes.Tests.Integration.SqlServer
+      # boots the same real app via WebApplicationFactory, but against a
+      # real, containerized SQL Server 2022 instance (via Testcontainers)
+      # instead of in-memory SQLite -- catching collation, transaction
+      # isolation, and datetime-precision bugs the SQLite-backed suite
+      # above structurally cannot see. GitHub's ubuntu-latest runners have
+      # Docker running by default, so Testcontainers needs no extra setup
+      # here; the first run on a given runner pulls the SQL Server image
+      # (~5 min), and that layer is reused by later jobs on the same
+      # runner within Docker's local cache.
+      - name: Restore (integration tests: Quotes.Tests.Integration.SqlServer)
+        run: dotnet restore Day3/piece2/Quotes.Tests.Integration.SqlServer/Quotes.Tests.Integration.SqlServer.csproj
+
+      - name: Build (integration tests: Quotes.Tests.Integration.SqlServer)
+        run: dotnet build Day3/piece2/Quotes.Tests.Integration.SqlServer/Quotes.Tests.Integration.SqlServer.csproj --no-restore --configuration Release
+
+      - name: Test (integration tests: Quotes.Tests.Integration.SqlServer)
+        run: dotnet test Day3/piece2/Quotes.Tests.Integration.SqlServer/Quotes.Tests.Integration.SqlServer.csproj --no-build --configuration Release --logger "console;verbosity=normal"
