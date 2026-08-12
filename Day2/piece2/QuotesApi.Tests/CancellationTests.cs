@@ -53,7 +53,7 @@ public class CancellationTests : IAsyncLifetime
         // The most common behavior: the request will throw HttpRequestException
         // because the connection closed before the response was complete.
         Assert.True(
-            response.StatusCode >= 500 || response.IsSuccessStatusCode == false,
+            (int)response.StatusCode >= 500 || response.IsSuccessStatusCode == false,
             $"Expected error or timeout response, got {response.StatusCode}");
     }
 
