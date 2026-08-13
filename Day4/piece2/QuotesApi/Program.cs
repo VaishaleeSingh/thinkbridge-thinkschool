@@ -1,3 +1,4 @@
+using Azure.Identity;
 using Microsoft.EntityFrameworkCore;
 using QuotesApi.Data;
 using QuotesApi.Extensions;
@@ -9,6 +10,29 @@ using Serilog;
 // listening for HTTP requests -- it deliberately contains no business logic.
 
 var builder = WebApplication.CreateBuilder(args);
+
+// --- Secrets ---------------------------------------------------------------
+// Connection strings and keys are never committed. They come from, in order
+// of preference: Key Vault when a vault is configured (deployed
+// environments, authenticating with the app's managed identity), otherwise
+// .NET user-secrets or environment variables locally -- both of which live
+// outside the repository.
+//
+// Conditional on purpose: a developer with no Azure login, and CI, must
+// still be able to run the app. Adding the provider unconditionally would
+// make DefaultAzureCredential fail at startup for anyone not signed in.
+//
+// Note Key Vault secret names cannot contain ':', so the hierarchy is
+// written with a double dash -- a secret named
+// "ApplicationInsights--ConnectionString" is read as the configuration key
+// "ApplicationInsights:ConnectionString".
+var keyVaultUri = builder.Configuration["KeyVault:Uri"];
+if (!string.IsNullOrWhiteSpace(keyVaultUri))
+{
+    builder.Configuration.AddAzureKeyVault(
+        new Uri(keyVaultUri),
+        new DefaultAzureCredential());
+}
 
 // Replaces the default Microsoft.Extensions.Logging console provider with
 // Serilog end-to-end, reading levels/sinks from the "Serilog" config section
@@ -24,10 +48,30 @@ var builder = WebApplication.CreateBuilder(args);
 // exactly the kind of hidden cross-test coupling worth avoiding. Scoping
 // the logger pipeline to each host's own builder keeps every test's
 // Serilog setup fully independent, with no global mutable state at all.
-builder.Host.UseSerilog((context, services, loggerConfig) =>
-    loggerConfig
-        .ReadFrom.Configuration(context.Configuration)
-        .Enrich.FromLogContext());
+// ClearProviders() first: WebApplication.CreateBuilder registers the default
+// Console/Debug/EventSource logging providers, and with writeToProviders
+// below Serilog forwards every event to all of them -- so leaving them in
+// place prints each line twice, once in Microsoft.Extensions.Logging format
+// and again in Serilog format. (Observed exactly that before adding this.)
+// Clearing them leaves the console to Serilog alone, while providers
+// registered LATER -- notably the one the Azure Monitor distro installs in
+// AddObservability -- are still picked up.
+builder.Logging.ClearProviders();
+
+// writeToProviders: true matters once Application Insights is in play.
+// By default Serilog REPLACES the logging pipeline, so anything written
+// through ILogger goes only to Serilog's own sinks and never reaches other
+// registered ILoggerProviders. The Azure Monitor distro ships logs through
+// exactly such a provider, so without this flag the console would show logs
+// while App Insights showed traces and metrics but no logs at all -- and
+// nothing would report an error, which is the worst kind of gap to have in
+// telemetry.
+builder.Host.UseSerilog(
+    (context, services, loggerConfig) =>
+        loggerConfig
+            .ReadFrom.Configuration(context.Configuration)
+            .Enrich.FromLogContext(),
+    writeToProviders: true);
 
 // AddProblemDetails() makes unhandled errors come back to the client as a
 // standard RFC 7807 JSON shape instead of a raw stack trace.

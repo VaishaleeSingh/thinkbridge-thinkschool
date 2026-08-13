@@ -87,7 +87,16 @@ public sealed class AuthService : IAuthService
 
         if (user is null)
         {
-            _logger.LogWarning("Login failed for email {Email}: user not found", email);
+            // Deliberately logs NO identifier. Until Day 4's App Insights
+            // piece these lines went to a console that scrolled away;
+            // they now go to a cloud store with weeks of retention,
+            // readable by anyone with reader access on the resource. An
+            // email address typed into a login box is personal data
+            // whether or not an account exists for it -- and for a failed
+            // lookup there is no account to attribute it to anyway. The
+            // TraceId on this line still ties it to the exact request, so
+            // nothing is lost for debugging.
+            _logger.LogWarning("Login failed: no account exists for the supplied email address");
             return null;
         }
 
@@ -115,7 +124,10 @@ public sealed class AuthService : IAuthService
 
         if (result == PasswordVerificationResult.Failed)
         {
-            _logger.LogWarning("Login failed for email {Email}: invalid password", email);
+            // The user id rather than the email: enough to correlate with
+            // everything else in the system, without putting an address
+            // into telemetry.
+            _logger.LogWarning("Login failed for user {UserId}: invalid password", user.Id);
             return null;
         }
 
@@ -126,7 +138,7 @@ public sealed class AuthService : IAuthService
         var refreshToken = await _refreshTokenService.GenerateTokenAsync(user.Id, cancellationToken);
         const int expiresIn = AccessTokenLifetimeMinutes * 60;
 
-        _logger.LogInformation("User {Email} logged in successfully", email);
+        _logger.LogInformation("User {UserId} logged in successfully", user.Id);
 
         return (accessToken, refreshToken, expiresIn);
     }
