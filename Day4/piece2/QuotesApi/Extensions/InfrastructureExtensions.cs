@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using QuotesApi.Authorization;
+using QuotesApi.Configuration;
 using QuotesApi.Data;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
@@ -84,15 +85,37 @@ public static class InfrastructureExtensions
         // This means nothing that already worked breaks, and new clients
         // can start using Entra ID immediately.
 
-        var azureAdSettings = configuration.GetSection("AzureAd");
-        var customJwtSecret = configuration["Jwt:Secret"];
+        // Bind the typed options and validate them AT STARTUP.
+        //
+        // This replaces a hand-written "if the secret is missing, throw"
+        // guard. Two things are better for it. Validation now covers every
+        // rule (present, long enough for HMAC-SHA256, issuer and audience
+        // set, lifetime in a sane range) and reports ALL failures together
+        // rather than surfacing the next one only after you have fixed the
+        // last. And ValidateOnStart means the app refuses to boot rather
+        // than starting happily and failing at the first login attempt --
+        // a misconfigured deployment should fail where a rollout notices,
+        // not where a user does.
+        services
+            .AddOptions<JwtOptions>()
+            .Bind(configuration.GetSection(JwtOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
-        if (string.IsNullOrEmpty(customJwtSecret))
-        {
-            throw new InvalidOperationException(
-                "Jwt:Secret is missing from configuration. " +
-                "Add it under appsettings.json -> \"Jwt\": { \"Secret\": \"...\" }.");
-        }
+        services
+            .AddOptions<PaginationOptions>()
+            .Bind(configuration.GetSection(PaginationOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.Configure<AzureAdOptions>(
+            configuration.GetSection(AzureAdOptions.SectionName));
+
+        // Reading the values directly here as well: the authentication
+        // handlers below are configured once, during startup, and the
+        // options container is not built yet at this point.
+        var jwt = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+        var azureAd = configuration.GetSection(AzureAdOptions.SectionName).Get<AzureAdOptions>() ?? new AzureAdOptions();
 
         services
             .AddAuthentication(defaultScheme: "MultiScheme")
@@ -107,13 +130,13 @@ public static class InfrastructureExtensions
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(customJwtSecret)),
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Secret)),
 
                     ValidateIssuer = true,
-                    ValidIssuer = "https://yourapp.com",
+                    ValidIssuer = jwt.Issuer,
 
                     ValidateAudience = true,
-                    ValidAudience = "quotes-api",
+                    ValidAudience = jwt.Audience,
 
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero // don't give expired tokens extra grace time
@@ -128,8 +151,8 @@ public static class InfrastructureExtensions
             // keys from there to verify the token's signature.
             .AddJwtBearer("EntraId", options =>
             {
-                options.Authority = azureAdSettings["Authority"];
-                options.Audience = azureAdSettings["Audience"];
+                options.Authority = azureAd.Authority;
+                options.Audience = azureAd.Audience;
 
                 options.TokenValidationParameters = new TokenValidationParameters
                 {

@@ -1,8 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using QuotesApi.Configuration;
 using NSubstitute;
 using Quotes.Tests.Unit.TestDoubles;
 using QuotesApi.Data;
@@ -22,27 +23,30 @@ public class AuthServiceTests
     // pure orchestration (look up user, verify password, delegate to
     // GenerateAccessToken and IRefreshTokenService) that the integration
     // suite already exercises end-to-end through real HTTP calls.
+    internal const string TestIssuer = "https://issuer.under.test";
+    internal const string TestAudience = "audience-under-test";
+
     private static AuthService CreateSut(
         IClock clock,
-        string? jwtSecret = "unit-test-secret-that-is-long-enough-for-hmacsha256")
+        JwtOptions? jwtOptions = null)
     {
         var options = new DbContextOptionsBuilder<QuotesDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         var db = new QuotesDbContext(options);
 
-        var configValues = new Dictionary<string, string?>();
-        if (jwtSecret is not null)
-            configValues["Jwt:Secret"] = jwtSecret;
-
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(configValues)
-            .Build();
+        jwtOptions ??= new JwtOptions
+        {
+            Secret = "unit-test-secret-that-is-long-enough-for-hmacsha256",
+            Issuer = TestIssuer,
+            Audience = TestAudience,
+            AccessTokenLifetime = TimeSpan.FromMinutes(15)
+        };
 
         var refreshTokenService = Substitute.For<IRefreshTokenService>();
         var logger = Substitute.For<ILogger<AuthService>>();
 
-        return new AuthService(db, config, refreshTokenService, logger, clock);
+        return new AuthService(db, Options.Create(jwtOptions), refreshTokenService, logger, clock);
     }
 
     [Fact]
@@ -106,18 +110,56 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public void GenerateAccessToken_WhenJwtSecretIsMissing_ThrowsInvalidOperationException()
+    public void GenerateAccessToken_UsesTheConfiguredIssuerAndAudience_NotHardcodedValues()
     {
-        // Arrange
-        var clock = new FakeClock(DateTimeOffset.UtcNow);
-        var sut = CreateSut(clock, jwtSecret: null);
+        // This replaces a test that asserted GenerateAccessToken throws when
+        // Jwt:Secret is missing. That guard no longer exists, and its
+        // removal is the point: the options are validated at startup now, so
+        // the app refuses to boot rather than serving traffic and failing at
+        // the first login. A runtime check here would be unreachable code.
+        //
+        // What is worth testing instead is that these values genuinely come
+        // FROM configuration. They used to be string literals repeated in
+        // AuthService and again in the token validation setup, with only a
+        // comment asking humans to keep them in step. Configuring
+        // deliberately non-default values and asserting the minted token
+        // carries them is what catches a regression back to a constant.
+        var clock = new FakeClock(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        var sut = CreateSut(clock, new JwtOptions
+        {
+            Secret = "unit-test-secret-that-is-long-enough-for-hmacsha256",
+            Issuer = "https://some-other-issuer.example.com",
+            Audience = "some-other-audience",
+            AccessTokenLifetime = TimeSpan.FromMinutes(15)
+        });
         var user = new User { Id = 1, Email = "user@thinkbridge.com" };
 
-        // Act
-        var act = () => sut.GenerateAccessToken(user);
+        var parsed = new JwtSecurityTokenHandler().ReadJwtToken(sut.GenerateAccessToken(user));
 
-        // Assert
-        act.Should().Throw<InvalidOperationException>();
+        parsed.Issuer.Should().Be("https://some-other-issuer.example.com");
+        parsed.Audiences.Should().ContainSingle().Which.Should().Be("some-other-audience");
+    }
+
+    [Fact]
+    public void GenerateAccessToken_ExpiresAfterTheConfiguredLifetime()
+    {
+        // The lifetime was a const in AuthService and, separately, a literal
+        // 900 in the refresh endpoint's response telling clients when to
+        // come back. Both now read one configured value; this pins the
+        // minting half of that.
+        var now = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        var sut = CreateSut(new FakeClock(now), new JwtOptions
+        {
+            Secret = "unit-test-secret-that-is-long-enough-for-hmacsha256",
+            Issuer = TestIssuer,
+            Audience = TestAudience,
+            AccessTokenLifetime = TimeSpan.FromMinutes(42)
+        });
+
+        var parsed = new JwtSecurityTokenHandler()
+            .ReadJwtToken(sut.GenerateAccessToken(new User { Id = 1, Email = "u@e.com" }));
+
+        parsed.ValidTo.Should().Be(now.UtcDateTime.AddMinutes(42));
     }
 
     [Fact]
