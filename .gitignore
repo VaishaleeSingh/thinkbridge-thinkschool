@@ -8,3 +8,5 @@ obj/
 *.db-shm
 
 _staging/
+TestResults/
+CoverageReport/

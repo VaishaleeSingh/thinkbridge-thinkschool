@@ -1,0 +1,146 @@
+name: ci
+
+# Day 4 -- Wire CI with GitHub Actions.
+#
+# Runs on every push (any branch, for fast feedback while working) and on
+# every pull request into main (the check branch protection on main
+# requires -- see the "Required for merging into main" note at the bottom
+# of this file for how that's wired up outside of this YAML).
+#
+# This replaces the old dotnet-tests.yml from Day 3: that workflow
+# repeated the same restore/build/test steps once per .csproj because
+# there was no solution file to point a single `dotnet test` at. Day 4
+# adds Day4/piece2/QuotesApi.slnx for exactly that reason, so this
+# workflow can restore/build/test everything -- QuotesApi itself plus all
+# four test projects -- in one pass instead of four copy-pasted ones.
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Day4/piece2/QuotesApi.slnx
+
+      - name: Build
+        run: dotnet build Day4/piece2/QuotesApi.slnx --no-restore --configuration Release
+
+      # trx gives a structured, per-test pass/fail record (viewable in
+      # most .NET-aware tools); the coverage collector is Coverlet's
+      # built-in "XPlat Code Coverage" data collector, scoped down to just
+      # QuotesApi's own assembly via coverlet.runsettings -- see that
+      # file for why. The coverage collector writes each test project's
+      # run into its own auto-generated GUID subfolder under TestResults/,
+      # so those never collide. The trx logger does NOT get that same
+      # per-project uniquification if you pin an exact LogFileName -- a
+      # fixed name is shared across every project's run against this
+      # solution, so each later project's trx silently overwrites the
+      # one before it, and only the last project's results would survive
+      # to the upload step. Deliberately NOT setting LogFileName here so
+      # each project's run gets its own default (unique) filename instead.
+      - name: Test
+        run: >
+          dotnet test Day4/piece2/QuotesApi.slnx
+          --no-build
+          --configuration Release
+          --logger trx
+          --collect:"XPlat Code Coverage"
+          --settings Day4/piece2/coverlet.runsettings
+          --results-directory Day4/piece2/TestResults
+
+      # if: always() on every step from here down: if a test genuinely
+      # fails, the Test step above already fails the job (that's the "any
+      # test failure" half of Day 4's requirement) -- but the whole point
+      # of collecting trx/coverage output is to be able to see WHY it
+      # failed, so those artifacts still need to upload even then.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: Day4/piece2/TestResults/**/*.trx
+          if-no-files-found: error
+
+      - name: Upload raw coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports-raw
+          path: Day4/piece2/TestResults/**/coverage.cobertura.xml
+          if-no-files-found: error
+
+      # Five test projects means five separate Cobertura files (one per
+      # project's test run) -- merge them into one before checking a
+      # single coverage number against the threshold below. This is the
+      # one third-party action in this workflow; ReportGenerator itself
+      # is a long-established, widely used OSS tool, but I couldn't
+      # verify the exact current major-version tag for its GitHub Action
+      # wrapper from the sandbox this was written in (no network access
+      # to check) -- if this step fails specifically on "action not
+      # found" rather than a real coverage problem, that tag is why.
+      - name: Merge coverage reports
+        if: always()
+        uses: danielpalme/ReportGenerator-GitHub-Action@5
+        with:
+          reports: 'Day4/piece2/TestResults/**/coverage.cobertura.xml'
+          targetdir: 'Day4/piece2/CoverageReport'
+          reporttypes: 'Cobertura;MarkdownSummaryGithub'
+
+      - name: Upload merged coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-merged
+          path: Day4/piece2/CoverageReport
+
+      - name: Post coverage summary
+        if: always()
+        run: cat Day4/piece2/CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      # The actual 70% gate. Deliberately not a second third-party action
+      # here -- Cobertura's line-rate attribute is a stable, documented
+      # part of its schema, and parsing one number out of one XML file is
+      # simple enough that owning it directly means no dependency on
+      # another action's exact flag names for the one step that actually
+      # blocks a merge. No if: always() here on purpose: if the Test step
+      # above already failed, this step is skipped and the job is already
+      # red for that reason, which is the correct, simpler signal.
+      - name: Enforce coverage threshold
+        run: |
+          python3 - << 'PYEOF'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          THRESHOLD = 70.0
+          path = "Day4/piece2/CoverageReport/Cobertura.xml"
+
+          root = ET.parse(path).getroot()
+          percent = float(root.attrib["line-rate"]) * 100
+
+          print(f"QuotesApi line coverage: {percent:.2f}% (required: {THRESHOLD}%)")
+
+          if percent < THRESHOLD:
+              print(f"::error::Coverage {percent:.2f}% is below the required {THRESHOLD}% threshold.")
+              sys.exit(1)
+          PYEOF
+
+# Required for merging into main:
+# GitHub branch protection (Settings -> Branches -> main, in the repo's
+# web UI) is what actually blocks a PR from merging on a red run of this
+# workflow -- there is no YAML for that, it has to be configured once in
+# the repo settings, and only after this workflow has run at least once
+# (GitHub only lists a check as selectable once it has appeared in a run).
