@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using QuotesApi.Data;
 using QuotesApi.Models;
+using QuotesApi.Observability;
 
 namespace QuotesApi.Services;
 
@@ -90,8 +91,27 @@ public sealed class AuthService : IAuthService
             return null;
         }
 
-        var hasher = new PasswordHasher<User>();
-        var result = hasher.VerifyHashedPassword(user, user.PasswordHash, password);
+        // Password verification gets its own span. PasswordHasher runs
+        // PBKDF2 with ~100k iterations -- deliberately expensive, and by
+        // design usually the slowest part of a login. It is also pure CPU
+        // work, so neither the EF Core nor the HttpClient instrumentation
+        // sees it: without this span a slow login trace would show two
+        // quick database queries either side of a large unexplained gap.
+        //
+        // Scoped to a block rather than "using var" for the whole method,
+        // so the span measures the hashing and nothing after it.
+        //
+        // Tagged with the numeric user id, NOT the email: trace backends
+        // are somewhere personal data accumulates quietly, and an id is
+        // enough to correlate with the rest of the system.
+        PasswordVerificationResult result;
+        using (var activity = QuotesActivitySource.Instance.StartActivity("verify-password"))
+        {
+            activity?.SetTag("user.id", user.Id);
+
+            var hasher = new PasswordHasher<User>();
+            result = hasher.VerifyHashedPassword(user, user.PasswordHash, password);
+        }
 
         if (result == PasswordVerificationResult.Failed)
         {

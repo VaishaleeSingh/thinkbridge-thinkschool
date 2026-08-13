@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using QuotesApi.Middleware;
@@ -130,5 +131,69 @@ public class CorrelationIdMiddlewareTests
         sink.Events.Should().HaveCount(2);
         TraceIdOf(sink.Events[0]).Should().Be("first-request");
         TraceIdOf(sink.Events[1]).Should().Be("second-request");
+    }
+
+    [Fact]
+    public async Task Invoke_WhenAnActivityIsRunning_UsesTheActivitysTraceIdNotTheHttpContextOne()
+    {
+        // Arrange -- an ambient Activity is what OpenTelemetry's
+        // instrumentation creates for every incoming request, and its
+        // TraceId is the one the trace backend indexes the trace under.
+        var (logger, sink) = CreateLogger();
+
+        var context = new DefaultHttpContext
+        {
+            TraceIdentifier = "aspnet-core-trace-identifier"
+        };
+
+        var middleware = new CorrelationIdMiddleware(_ =>
+        {
+            logger.Information("inside the request");
+            return Task.CompletedTask;
+        });
+
+        using var activity = new Activity("incoming-request").Start();
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert -- the logged TraceId must be the Activity's, because that
+        // is the value that will let someone jump from this log line to the
+        // matching trace. If it fell back to TraceIdentifier here, logs and
+        // traces would each be internally consistent and mutually useless.
+        sink.Events.Should().ContainSingle();
+        TraceIdOf(sink.Events[0]).Should().Be(activity.TraceId.ToString());
+        TraceIdOf(sink.Events[0]).Should().NotBe("aspnet-core-trace-identifier");
+    }
+
+    [Fact]
+    public async Task Invoke_WhenNoActivityIsRunning_FallsBackToTheHttpContextTraceIdentifier()
+    {
+        // Arrange -- tracing disabled, or code running outside a request.
+        // There is still a request to correlate, so something is better
+        // than an empty property.
+        var (logger, sink) = CreateLogger();
+
+        var context = new DefaultHttpContext
+        {
+            TraceIdentifier = "aspnet-core-trace-identifier"
+        };
+
+        var middleware = new CorrelationIdMiddleware(_ =>
+        {
+            logger.Information("inside the request");
+            return Task.CompletedTask;
+        });
+
+        // Guard: make sure nothing left an Activity running from an earlier
+        // test on this thread, which would silently invalidate this test.
+        Activity.Current.Should().BeNull();
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        sink.Events.Should().ContainSingle();
+        TraceIdOf(sink.Events[0]).Should().Be("aspnet-core-trace-identifier");
     }
 }
