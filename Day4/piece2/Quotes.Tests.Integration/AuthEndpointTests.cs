@@ -88,6 +88,23 @@ public class AuthEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Login_WithUnknownEmail_Returns401()
+    {
+        // Arrange -- deliberately no SeedUserAsync() call. This is the
+        // "user not found" branch in AuthService.LoginAsync, distinct from
+        // Login_WithWrongPassword_Returns401 above (which needs a real
+        // user). Both must return the same 401 -- if they ever diverged,
+        // that would leak which emails exist in the system.
+        var unknownEmail = $"nobody-{Guid.NewGuid():N}@example.com";
+
+        // Act
+        var response = await _client.PostAsJsonAsync("/api/auth/login", new LoginRequest(unknownEmail, Password));
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task Login_WithMissingFields_ReturnsValidationProblem()
     {
         // Act
@@ -129,6 +146,44 @@ public class AuthEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Refresh_TokenReferencesDeletedUser_ReturnsUnauthorized()
+    {
+        // Arrange
+        var email = await SeedUserAsync();
+        var loginResponse = await _client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, Password));
+        var tokens = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
+
+            // The Users -> RefreshTokens foreign key is ON DELETE CASCADE,
+            // so deleting a user through EF as usual would take their
+            // refresh tokens down with it -- which would just re-exercise
+            // the "token not found" branch above, not the one this test
+            // targets. Turning foreign key enforcement off for this one
+            // delete reproduces the specific scenario the /refresh
+            // endpoint's null-user guard actually defends against: a
+            // token that outlives its user, e.g. a manual or GDPR-driven
+            // deletion script run directly against the database, bypassing
+            // the app (and therefore the cascade) entirely.
+            await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF;");
+            var user = await db.Users.SingleAsync(u => u.Email == email);
+            db.Users.Remove(user);
+            await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON;");
+        }
+
+        // Act
+        var refreshResponse = await _client.PostAsJsonAsync(
+            "/api/auth/refresh",
+            new RefreshRequest(tokens!.RefreshToken));
+
+        // Assert
+        refreshResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task Logout_RevokesToken_SubsequentRefreshReturns401()
     {
         // Arrange
@@ -147,5 +202,16 @@ public class AuthEndpointTests : IAsyncLifetime
         // Assert
         logoutResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
         refreshAfterLogout.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Logout_WithMissingToken_ReturnsValidationProblem()
+    {
+        // Act
+        var response = await _client.PostAsJsonAsync("/api/auth/logout", new LogoutRequest(""));
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
     }
 }

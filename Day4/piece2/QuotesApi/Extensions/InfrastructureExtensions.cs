@@ -7,7 +7,6 @@ using QuotesApi.Authorization;
 using QuotesApi.Data;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
-using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 
 namespace QuotesApi.Extensions;
@@ -155,44 +154,12 @@ public static class InfrastructureExtensions
             // correctly.
             .AddPolicyScheme("MultiScheme", "Custom JWT or Entra JWT", options =>
             {
+                // The actual decision logic lives in AuthSchemeSelector, as
+                // a standalone, unit-testable pure function of the header
+                // value -- see that class for why it isn't written inline
+                // here anymore.
                 options.ForwardDefaultSelector = httpContext =>
-                {
-                    var authorizationHeader = httpContext.Request.Headers["Authorization"].FirstOrDefault();
-
-                    // No token at all -> nothing to inspect. Forward to
-                    // CustomJwt anyway; it will correctly reject the request
-                    // with 401 since there's no token to validate.
-                    if (string.IsNullOrEmpty(authorizationHeader))
-                        return "CustomJwt";
-
-                    try
-                    {
-                        var rawToken = authorizationHeader.Replace("Bearer ", "").Trim();
-                        var tokenReader = new JwtSecurityTokenHandler();
-
-                        // CanReadToken/ReadToken only parse the token's
-                        // structure -- they do NOT check the signature.
-                        // Real validation still happens afterward, inside
-                        // whichever scheme we forward to.
-                        if (tokenReader.CanReadToken(rawToken))
-                        {
-                            var parsedToken = tokenReader.ReadToken(rawToken) as JwtSecurityToken;
-                            var audience = parsedToken?.Claims
-                                .FirstOrDefault(claim => claim.Type == "aud")?.Value ?? "";
-
-                            if (audience.Contains("api://"))
-                                return "EntraId";
-                        }
-                    }
-                    catch
-                    {
-                        // Token is malformed / not a JWT at all. Fall through
-                        // to CustomJwt below, which will reject it with 401
-                        // through the normal validation pipeline.
-                    }
-
-                    return "CustomJwt";
-                };
+                    AuthSchemeSelector.Select(httpContext.Request.Headers["Authorization"].FirstOrDefault());
             });
 
         // ------------------------------------------------------------
