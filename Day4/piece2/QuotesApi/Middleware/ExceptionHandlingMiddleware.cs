@@ -50,6 +50,25 @@ public class ExceptionHandlingMiddleware
         // map to 400 rather than bubbling up as a generic 500.
         return ex switch
         {
+            // A malformed or unreadable request body is the CLIENT's mistake,
+            // and BadHttpRequestException already carries the right status
+            // code (400) -- it was previously falling through to the
+            // catch-all below and being reported as a 500. That matters for
+            // more than tidiness: a 500 says "this server is broken", so a
+            // typo in someone's JSON would page whoever is on call and count
+            // against the service's error budget, while telling the caller
+            // nothing they can act on.
+            //
+            // The Detail is deliberately generic rather than echoing
+            // ex.Message: this handler also covers the login endpoint, whose
+            // request body contains a password, and parse-error text is not
+            // somewhere to risk leaking any of it.
+            BadHttpRequestException badRequest => new ProblemDetails
+            {
+                Status = badRequest.StatusCode,
+                Title = "The request could not be read.",
+                Detail = "The request body could not be parsed. Check that it is valid JSON matching the expected shape."
+            },
             ArgumentException => new ProblemDetails
             {
                 Status = StatusCodes.Status400BadRequest,

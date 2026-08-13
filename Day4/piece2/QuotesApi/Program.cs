@@ -38,6 +38,12 @@ builder.Services.AddProblemDetails();
 // Extensions/InfrastructureExtensions.cs for the details of each piece.
 builder.Services.AddInfrastructure(builder.Configuration);
 
+// Distributed tracing (spans for requests, EF queries, outbound HTTP, plus
+// this app's own custom spans). See ObservabilityExtensions.cs -- in
+// particular for why the OTLP exporter is only wired up when an endpoint is
+// actually configured.
+builder.Services.AddObservability(builder.Configuration);
+
 var app = builder.Build();
 
 // Stamps every log line written during a request with that request's

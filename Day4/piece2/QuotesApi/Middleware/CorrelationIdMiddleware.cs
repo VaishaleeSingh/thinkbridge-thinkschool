@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Serilog.Context;
 
 namespace QuotesApi.Middleware;
@@ -40,10 +41,23 @@ public class CorrelationIdMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
+        // Prefer the ambient Activity's TraceId over HttpContext.TraceIdentifier.
+        // Both are usually the same value once tracing is enabled, but only
+        // the Activity one is GUARANTEED to be the W3C trace ID that
+        // OpenTelemetry reports to the trace backend -- which is the whole
+        // point of putting it on log lines. TraceIdentifier is an ASP.NET
+        // Core implementation detail that has historically been a
+        // connection-scoped "id:requestNumber" string instead, so relying
+        // on it to match the trace would be relying on a coincidence.
+        // It stays as the fallback for the case where no Activity is
+        // running at all (tracing disabled, or code invoked outside a
+        // request), where it is still better than nothing.
+        var traceId = Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier;
+
         // The "using" matters: it pops the property again once the request
         // finishes, so a TraceId can never bleed onto log lines belonging to
         // a later request that reuses this thread.
-        using (LogContext.PushProperty("TraceId", context.TraceIdentifier))
+        using (LogContext.PushProperty("TraceId", traceId))
         {
             await _next(context);
         }
