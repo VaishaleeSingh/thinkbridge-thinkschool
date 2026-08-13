@@ -2,12 +2,32 @@ using Microsoft.EntityFrameworkCore;
 using QuotesApi.Data;
 using QuotesApi.Extensions;
 using QuotesApi.Middleware;
+using Serilog;
 
 // This file is the app's entry point. It runs top-to-bottom, once, when the
 // app starts. Its whole job is to wire pieces together and then start
 // listening for HTTP requests -- it deliberately contains no business logic.
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Replaces the default Microsoft.Extensions.Logging console provider with
+// Serilog end-to-end, reading levels/sinks from the "Serilog" config section
+// (see appsettings.json) rather than "Logging" -- that section is what
+// ReadFrom.Configuration actually looks for.
+//
+// This uses the (context, services, loggerConfig) lambda form rather than
+// the more common `Log.Logger = new LoggerConfiguration()...CreateLogger();`
+// static-assignment pattern on purpose: this exact Program.cs is re-run
+// fresh inside every WebApplicationFactory<Program> in the integration test
+// suite, often several at once. A single shared static Log.Logger getting
+// reassigned/disposed across concurrently-running test hosts would be
+// exactly the kind of hidden cross-test coupling worth avoiding. Scoping
+// the logger pipeline to each host's own builder keeps every test's
+// Serilog setup fully independent, with no global mutable state at all.
+builder.Host.UseSerilog((context, services, loggerConfig) =>
+    loggerConfig
+        .ReadFrom.Configuration(context.Configuration)
+        .Enrich.FromLogContext());
 
 // AddProblemDetails() makes unhandled errors come back to the client as a
 // standard RFC 7807 JSON shape instead of a raw stack trace.
@@ -19,6 +39,14 @@ builder.Services.AddProblemDetails();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
+
+// Stamps every log line written during a request with that request's
+// TraceId (see CorrelationIdMiddleware). Registered FIRST, so it wraps
+// ExceptionHandlingMiddleware below rather than sitting after it: the one
+// log line you most need tied back to a request is the exception log for a
+// failed one, and that has to carry the same TraceId as everything else
+// from that request.
+app.UseMiddleware<CorrelationIdMiddleware>();
 
 // Catches any exception that escapes an endpoint and turns it into a clean
 // ProblemDetails response instead of leaking a raw .NET stack trace.
