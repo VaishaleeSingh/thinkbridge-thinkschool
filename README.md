@@ -43,10 +43,13 @@ OpenTelemetry tracing exported to Jaeger and Azure Application Insights, typed
 configuration with `IOptions` and startup validation, and a CI pipeline.
 `Day4/piece2/docs/observability.md` covers the tracing setup.
 
-**Day 5 — performance.** Diagnosing a slow endpoint from its trace rather than
-by guessing. `Day5/piece2/docs/slow-endpoint-diagnosis.md` walks an N+1 in
-`GET /api/collections` from the Jaeger trace that exposed it, through the fix,
-to the test that stops it coming back.
+**Day 5 — performance and packaging.** Diagnosing a slow endpoint from its
+trace rather than by guessing: `Day5/piece2/docs/slow-endpoint-diagnosis.md`
+walks an N+1 in `GET /api/collections` from the Jaeger trace that exposed it,
+through the fix, to the test that stops it coming back. Then packaging the app
+as a container image built from the project itself, with no Dockerfile —
+`Day5/piece2/docs/containerising.md`, including the health-probe split and the
+four things about it that were not obvious.
 
 ## Running it
 
@@ -90,6 +93,19 @@ Four projects: `Quotes.Tests.Unit` (domain and services, no host),
 `WebApplicationFactory`), and `Quotes.Tests.Integration.SqlServer`
 (Testcontainers — **requires Docker running**; these are the tests that fail
 first if Docker is not up).
+
+As a container (no Dockerfile — the image is built from the project):
+
+```bash
+cd Day5/piece2
+dotnet publish QuotesApi --os linux-musl --arch x64 /t:PublishContainer
+docker run --rm -p 8080:8080 -e Jwt__Secret="<at least 32 characters>" quotes-api:0.1.0
+curl http://localhost:8080/health
+```
+
+The `Jwt__Secret` variable is required — user secrets do not exist inside a
+container, and startup validation fails fast without it. See
+`Day5/piece2/docs/containerising.md`.
 
 Coverage:
 

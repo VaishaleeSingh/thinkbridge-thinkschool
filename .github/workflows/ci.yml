@@ -138,6 +138,92 @@ jobs:
               sys.exit(1)
           PYEOF
 
+  # Day 5: the image is built from the project itself (no Dockerfile), so
+  # the container build can break from an ordinary csproj edit with nothing
+  # in the test suite noticing. This job is the guard: it fails the PR
+  # rather than the deploy.
+  #
+  # Separate job, not another step on `test`, so the two run concurrently
+  # and a container failure is distinguishable from a test failure at a
+  # glance. It deliberately does NOT depend on `test` -- knowing both
+  # answers on a red PR is more useful than saving a runner minute.
+  container:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # linux-musl, not linux: the base image is Alpine, and a glibc RID
+      # ships a glibc build of the SQLite native library into a musl image.
+      # That combination builds and starts and then dies on first database
+      # access. See docs/containerising.md section 1.
+      #
+      # Builds the image into the runner's local Docker daemon. Nothing is
+      # pushed: publishing to a registry needs credentials that do not
+      # belong in this repository, and the property this job protects is
+      # "the image still builds and starts", not "it is distributable".
+      - name: Build container image
+        run: >
+          dotnet publish Day5/piece2/QuotesApi
+          --os linux-musl
+          --arch x64
+          --configuration Release
+          /t:PublishContainer
+
+      - name: Report image size
+        run: |
+          docker images quotes-api --format '{{.Repository}}:{{.Tag}}  {{.Size}}' \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # A built image is not a working one. This starts the container the
+      # way the docs say to and waits for the readiness probe to answer,
+      # which exercises the whole boot path: options validation, the
+      # startup EF migration, and SQLite actually being able to write to
+      # the path the csproj points it at. Every one of those has already
+      # failed once during this piece.
+      #
+      # The signing key here is a throwaway that exists only for this
+      # 30-second container. It is not used anywhere else and grants
+      # nothing beyond it.
+      - name: Start the container and wait for readiness
+        run: |
+          docker run -d --name quotes-api-ci -p 8080:8080 \
+            -e Jwt__Secret="ci-only-throwaway-signing-key-not-used-anywhere-else" \
+            quotes-api:0.1.0
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health/ready > /tmp/ready.json 2>/dev/null; then
+              echo "ready after ${attempt}s"; cat /tmp/ready.json; exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::Container never became ready. Logs follow."
+          docker logs quotes-api-ci
+          exit 1
+
+      # Proves the app answering is THIS app, not a proxy or a stray
+      # container that happened to bind 8080.
+      - name: Confirm the running app identifies itself
+        run: |
+          curl -fsS http://localhost:8080/health | tee /tmp/health.json
+          grep -q '"service":"QuotesApi"' /tmp/health.json
+
+      - name: Container logs
+        if: always()
+        run: docker logs quotes-api-ci || true
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f quotes-api-ci || true
+
+
 # Required for merging into main:
 # GitHub branch protection (Settings -> Branches -> main, in the repo's
 # web UI) is what actually blocks a PR from merging on a red run of this
