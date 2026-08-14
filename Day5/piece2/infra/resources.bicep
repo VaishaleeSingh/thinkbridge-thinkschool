@@ -15,6 +15,63 @@ param quotesApiImageName string = ''
 
 var abbreviations = loadJsonContent('./abbreviations.json')
 
+// Log Analytics workspace -- backing store for Application Insights below.
+//
+// A workspace-based Application Insights component does not hold its own
+// data: `requests`, `dependencies`, `traces` and the rest are tables in
+// THIS workspace, which is what the KQL in docs/day5-appinsights-submission.md
+// actually queries. Classic (non-workspace) components were retired, so
+// there is no version of this that skips the workspace.
+//
+// A dedicated workspace rather than the one behind the shared
+// `thinkschool-env` Container Apps Environment: that workspace lives in
+// `thinkschool-rg` and is owned by the manual-CLI exercise, and it
+// collects container *console/system* logs for every app in the
+// environment. Application telemetry from this exercise belongs to this
+// exercise's resource group, where `azd down` will remove it with
+// everything else, and where its query surface is not shared with
+// unrelated apps.
+//
+// PerGB2018 is the only generally-available SKU for new workspaces;
+// 30-day retention is the included, no-extra-cost default. Both are
+// stated explicitly rather than left to defaults so the cost profile of
+// this file is readable without consulting the API version's defaults.
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: '${abbreviations.logAnalyticsWorkspace}${resourceToken}'
+  location: location
+  tags: tags
+  properties: {
+    sku: {
+      name: 'PerGB2018'
+    }
+    retentionInDays: 30
+  }
+}
+
+// Application Insights -- the ingestion endpoint QuotesApi's OpenTelemetry
+// setup exports to.
+//
+// QuotesApi/Extensions/ObservabilityExtensions.cs wires UseAzureMonitor()
+// ONLY when a connection string is present, and registers the ASP.NET Core
+// and HttpClient instrumentation itself only when it is absent (the Azure
+// Monitor distro brings its own; registering both would double-count every
+// request and corrupt exactly the percentiles this exercise measures). So
+// the connection string below is not just configuration -- it is the switch
+// that selects which of the two telemetry pipelines the app runs. Nothing
+// reaches Azure without it, which is why the deployed app emitted nothing
+// before this resource existed.
+resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: '${abbreviations.applicationInsights}-quotes-api-${resourceToken}'
+  location: location
+  tags: tags
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logAnalyticsWorkspace.id
+    IngestionMode: 'LogAnalytics'
+  }
+}
+
 // Container Registry
 resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: '${abbreviations.containerRegistry}${resourceToken}'
@@ -165,6 +222,33 @@ resource quotesApi 'Microsoft.App/containerApps@2023-05-01' = {
               name: 'ASPNETCORE_ENVIRONMENT'
               value: 'Production'
             }
+            // The double underscore is the environment-variable spelling of
+            // the ':' separator, so this arrives as the configuration key
+            // `ApplicationInsights:ConnectionString` -- the exact key
+            // ObservabilityExtensions reads. The exercise text names
+            // APPLICATIONINSIGHTS_CONNECTION_STRING, which is the Azure
+            // Monitor distro's own auto-discovery variable; this app never
+            // reads it, because it passes the connection string to
+            // UseAzureMonitor() explicitly rather than letting the distro
+            // find one. Both are set: the first is what actually turns
+            // telemetry on here, the second keeps the app consistent with
+            // what Azure tooling (and anyone following the standard docs)
+            // expects to find on a Container App.
+            //
+            // Not a secretRef, unlike Jwt__Secret: the connection string
+            // carries an ingestion key, which grants write-only access to
+            // this component and nothing else, and every azd quickstart
+            // treats it as configuration. It is deliberately NOT emitted as
+            // a Bicep output -- azd writes outputs into .azure/<env>/.env,
+            // and .azure is not in this repository's .gitignore.
+            {
+              name: 'ApplicationInsights__ConnectionString'
+              value: applicationInsights.properties.ConnectionString
+            }
+            {
+              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+              value: applicationInsights.properties.ConnectionString
+            }
           ]
           probes: [
             {
@@ -212,3 +296,10 @@ output AZURE_CONTAINER_REGISTRY_NAME string = containerRegistry.name
 output SERVICE_QUOTES_API_IDENTITY_PRINCIPAL_ID string = quotesApiIdentity.properties.principalId
 output SERVICE_QUOTES_API_NAME string = quotesApi.name
 output SERVICE_QUOTES_API_URI string = 'https://${quotesApi.properties.configuration.ingress.fqdn}'
+
+// Names, not the connection string -- see the env block above for why the
+// connection string itself stays out of azd's output/.env path. These are
+// enough to open the resource, or to fetch the connection string on demand:
+//   az monitor app-insights component show -g <rg> -a <name> --query connectionString -o tsv
+output APPLICATIONINSIGHTS_NAME string = applicationInsights.name
+output AZURE_LOG_ANALYTICS_WORKSPACE_NAME string = logAnalyticsWorkspace.name

@@ -1,4 +1,5 @@
 {
+  "applicationInsights": "appi",
   "containerApps": "ca",
   "containerAppsEnvironment": "cae",
   "containerRegistry": "cr",
