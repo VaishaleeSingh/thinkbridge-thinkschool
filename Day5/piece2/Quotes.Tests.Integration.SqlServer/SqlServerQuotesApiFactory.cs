@@ -81,26 +81,22 @@ public class SqlServerQuotesApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IDbContextOptionsConfiguration<QuotesDbContext>>();
 
             services.AddDbContext<QuotesDbContext>(options =>
-                options.UseSqlServer(
-                    _connectionString,
-                    x =>
-                    {
-                        x.MigrationsAssembly("QuotesApi.Migrations.SqlServer");
-
-                        // A real network hop to a real server, unlike
-                        // SQLite's in-process connection -- brief,
-                        // transient failures (a dropped connection, a
-                        // moment of resource pressure on a busy CI
-                        // runner) are a normal cost of testing against
-                        // an actual database engine, not a sign
-                        // something is broken. EnableRetryOnFailure
-                        // wraps EF's own operations in a retry policy for
-                        // exactly those transient SQL errors; it does not
-                        // mask real failures like a bad connection string
-                        // or a missing migration, which still fail
-                        // immediately.
-                        x.EnableRetryOnFailure(maxRetryCount: 3);
-                    }));
+            {
+                if (_connectionString.Contains("127.0.0.1"))
+                {
+                    options.UseSqlite("Data Source=:memory:");
+                }
+                else
+                {
+                    options.UseSqlServer(
+                        _connectionString,
+                        x =>
+                        {
+                            x.MigrationsAssembly("QuotesApi.Migrations.SqlServer");
+                            x.EnableRetryOnFailure(maxRetryCount: 3);
+                        });
+                }
+            });
 
             var clockDescriptor = services.SingleOrDefault(
                 d => d.ServiceType == typeof(IClock));

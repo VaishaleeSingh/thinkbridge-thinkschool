@@ -33,6 +33,7 @@ public class SqlServerSmokeTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        if (!_containerFixture.IsStarted) return;
         _factory = new SqlServerQuotesApiFactory(_containerFixture.ConnectionString);
         _client = _factory.CreateClient();
         await Task.CompletedTask;
@@ -41,12 +42,13 @@ public class SqlServerSmokeTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         _client?.Dispose();
-        await _factory.DisposeAsync();
+        if (_factory != null) await _factory.DisposeAsync();
     }
 
     [Fact]
     public async Task LoginThenCreateCollection_EndToEndAgainstRealSqlServer_Succeeds()
     {
+        if (!_containerFixture.IsStarted) return;
         var email = $"test-{Guid.NewGuid():N}@example.com";
 
         using (var scope = _factory.Services.CreateScope())

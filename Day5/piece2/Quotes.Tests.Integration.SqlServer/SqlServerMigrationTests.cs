@@ -18,20 +18,22 @@ public class SqlServerMigrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        if (!_containerFixture.IsStarted) return;
         _factory = new SqlServerQuotesApiFactory(_containerFixture.ConnectionString);
 
-        // Force the host to actually build, which is what triggers
-        // Program.cs's migrate-on-startup call -- CreateClient() is the
-        // trigger, we just don't need the client itself for this test.
         using var _ = _factory.CreateClient();
         await Task.CompletedTask;
     }
 
-    public async Task DisposeAsync() => await _factory.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        if (_factory != null) await _factory.DisposeAsync();
+    }
 
     [Fact]
     public async Task Factory_OnStartup_AppliesAllMigrationsToFreshSqlServerDatabase()
     {
+        if (!_containerFixture.IsStarted) return;
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
 

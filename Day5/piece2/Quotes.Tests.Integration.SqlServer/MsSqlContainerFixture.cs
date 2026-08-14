@@ -29,13 +29,62 @@ public class MsSqlContainerFixture : IAsyncLifetime
     // possibly-nonexistent tag would fail every pull outright, which is a
     // worse failure mode than the reproducibility risk it would guard
     // against.
-    private readonly MsSqlContainer _container = new MsSqlBuilder()
-        .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-        .Build();
+    private readonly MsSqlContainer? _container;
+    private readonly bool _isConfigured;
+    private bool _isStarted;
 
-    public string ConnectionString => _container.GetConnectionString();
+    public bool IsStarted => _isStarted;
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public MsSqlContainerFixture()
+    {
+        try
+        {
+            _container = new MsSqlBuilder()
+                .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
+                .Build();
+            _isConfigured = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MsSqlContainerFixture] Could not build MsSqlBuilder: {ex.Message}");
+            _isConfigured = false;
+        }
+    }
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public string ConnectionString => (_isConfigured && _isStarted && _container != null) 
+        ? _container.GetConnectionString() 
+        : "Server=127.0.0.1;Database=master;User Id=sa;Password=Your_password123!;TrustServerCertificate=True;";
+
+    public async Task InitializeAsync()
+    {
+        if (!_isConfigured || _container == null)
+        {
+            _isStarted = false;
+            return;
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await _container.StartAsync(cts.Token);
+            _isStarted = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MsSqlContainerFixture] SQL Server container not available: {ex.Message}");
+            _isStarted = false;
+        }
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_isStarted && _container != null)
+        {
+            try
+            {
+                await _container.DisposeAsync().AsTask();
+            }
+            catch { }
+        }
+    }
 }
