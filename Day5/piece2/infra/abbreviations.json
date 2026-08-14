@@ -1,0 +1,7 @@
+{
+  "containerApps": "ca",
+  "containerAppsEnvironment": "cae",
+  "containerRegistry": "cr",
+  "logAnalyticsWorkspace": "log",
+  "managedIdentity": "id"
+}
