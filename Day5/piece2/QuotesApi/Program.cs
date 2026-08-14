@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using QuotesApi.Data;
 using QuotesApi.Extensions;
 using QuotesApi.Middleware;
+using QuotesApi.Services;
 using Serilog;
 
 // This file is the app's entry point. It runs top-to-bottom, once, when the
@@ -113,6 +114,18 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
     await db.Database.MigrateAsync();
+
+    if (!await db.Users.AnyAsync())
+    {
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+        db.Users.Add(new QuotesApi.Models.User
+        {
+            Email = "test@example.com",
+            PasswordHash = authService.HashPassword("Password123!"),
+            CreatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+    }
 }
 
 // --- Turn authentication/authorization ON ----------------------------------

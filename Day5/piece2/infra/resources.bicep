@@ -154,6 +154,14 @@ resource quotesApi 'Microsoft.App/containerApps@2023-05-01' = {
               secretRef: 'jwt-secret'
             }
             {
+              name: 'Jwt__Issuer'
+              value: 'https://yourapp.com'
+            }
+            {
+              name: 'Jwt__Audience'
+              value: 'quotes-api'
+            }
+            {
               name: 'ASPNETCORE_ENVIRONMENT'
               value: 'Production'
             }

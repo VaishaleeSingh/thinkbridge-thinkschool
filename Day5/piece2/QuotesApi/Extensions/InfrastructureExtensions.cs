@@ -127,16 +127,26 @@ public static class InfrastructureExtensions
             // "does the signature match, and are the claims what we expect".
             .AddJwtBearer("CustomJwt", options =>
             {
+                var secret = configuration["Jwt:Secret"];
+                if (string.IsNullOrWhiteSpace(secret))
+                {
+                    secret = "Vaishalee-A41105222049-QuotesApiJwt2026";
+                }
+                var issuer = configuration["Jwt:Issuer"] ?? "https://yourapp.com";
+                var audience = configuration["Jwt:Audience"] ?? "quotes-api";
+
+                var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Secret)),
+                    IssuerSigningKey = key,
+                    IssuerSigningKeys = new[] { key },
 
                     ValidateIssuer = true,
-                    ValidIssuer = jwt.Issuer,
+                    ValidIssuer = issuer,
 
                     ValidateAudience = true,
-                    ValidAudience = jwt.Audience,
+                    ValidAudience = audience,
 
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero // don't give expired tokens extra grace time

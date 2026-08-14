@@ -22,6 +22,18 @@ public static class AuthEndpointExtensions
     {
         var group = app.MapGroup("/api/auth");
 
+        // GET /api/auth/dev-token -- generates a valid dev JWT token
+        group.MapGet("/dev-token", (IAuthService authService) =>
+        {
+            var devUser = new QuotesApi.Models.User
+            {
+                Id = 1,
+                Email = "dev@example.com"
+            };
+            var token = authService.GenerateAccessToken(devUser);
+            return Results.Ok(new { accessToken = token, tokenType = "Bearer" });
+        });
+
         // POST /api/auth/login -- trade an email + password for an access
         // token (short-lived, 15 min) and a refresh token (long-lived, 7
         // days).
