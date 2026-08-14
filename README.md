@@ -49,7 +49,14 @@ walks an N+1 in `GET /api/collections` from the Jaeger trace that exposed it,
 through the fix, to the test that stops it coming back. Then packaging the app
 as a container image built from the project itself, with no Dockerfile —
 `Day5/piece2/docs/containerising.md`, including the health-probe split and the
-four things about it that were not obvious.
+four things about it that were not obvious. Deployed to Azure Container Apps
+two ways: by hand with `az cli` (`Day5/piece2/docs/azure-container-apps.md`),
+and automated end-to-end with the Azure Developer CLI —
+`Day5/piece2/docs/azd-deployment.md` walks the real bugs `azd up` surfaced (a
+Container Apps Environment quota, an image-path mismatch, and an Alpine/RID
+mismatch) and how each was actually fixed and verified against the live
+endpoint; the verified results are in
+`Day5/piece2/docs/day5-azd-submission.md`.
 
 ## Running it
 

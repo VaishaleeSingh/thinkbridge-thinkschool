@@ -35,6 +35,14 @@ curl https://quotes-api-cowork.whitestone-71ebd55e.centralindia.azurecontainerap
 
 `/health/live` running with an empty `checks` array against `/health` and `/health/ready` each running the database check is the same split `docs/containerising.md` documents for the local build -- it holds identically in the deployed container.
 
+Screenshots of all three, hit directly against the live FQDN in a browser:
+
+![GET /health against the live deployment](images/azd-health.png)
+
+![GET /health/live against the live deployment](images/azd-health-live.png)
+
+![GET /health/ready against the live deployment](images/azd-health-ready.png)
+
 ---
 
 ## Notes for Mentor
