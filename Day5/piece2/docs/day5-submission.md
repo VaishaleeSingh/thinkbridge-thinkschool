@@ -27,16 +27,24 @@ query.
 
 ### Measured
 
-Same owner, same data, same machine (SQLite, local Jaeger via OTLP).
+Same owner (`seed-user`), same machine, SQLite, local Jaeger via OTLP.
 
 | | Collections | Spans | DB spans | Response time |
 |---|---|---|---|---|
 | Before | 30 | 32 | 31 | 523.78 ms (495–811 ms across five runs) |
-| After  | 30 | 3  | 2  | — |
+| After  | 60 | 3  | 2  | 33.8 ms (33.8–144.3 ms across five runs) |
 
-Screenshots in `docs/images/`: the before timeline, a span detail showing each
-child span is its own `SELECT` against `Quotes`, and a single-query trace
-answering the same endpoint in 11 ms for reference.
+Trace `30f48a3` before, `12a0ddc` after. The two rows are deliberately not on
+equal data, and the asymmetry runs the safe way: the seeding script uses a
+fixed `sub` and the SQLite file is never reset, so the *after* row is answering
+for twice as many collections in 2 queries instead of 31 — roughly 15× faster
+on double the rows. Had the difference gone the other way the comparison would
+be worthless.
+
+Screenshots in `docs/images/`: before timeline, before span detail showing each
+child span is its own `SELECT` against `Quotes`, after timeline, after span
+detail showing one `SELECT` with every quote id in a single `IN` clause, and an
+11 ms single-query trace for reference.
 
 ### Why two queries and not one
 

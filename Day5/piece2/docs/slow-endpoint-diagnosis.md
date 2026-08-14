@@ -50,24 +50,39 @@ shipped, and the trace names it precisely.
 
 ## Measured
 
-Same owner, same data, same machine (SQLite, local Jaeger via OTLP).
+Same owner (`seed-user`), same machine, SQLite, local Jaeger via OTLP.
 
 | | Collections | Spans in trace | DB spans | Response time |
 |---|---|---|---|---|
-| Before | 30 | 32 | 31 | 523.78 ms (range across five runs: 495 - 811 ms) |
-| After  | 30 | 3  | 2  | see `jaeger-after-fixed.jpg` |
+| Before | 30 | 32 | 31 | 523.78 ms (495 - 811 ms across five runs) |
+| After  | 60 | 3  | 2  | 33.8 ms (33.8 - 144.3 ms across five runs) |
 
-The `Before` row is trace `30f48a3`; the range comes from five consecutive
-requests in the same script run, all 31 DB spans. For reference, trace
-`935a952` shows the same endpoint answering in 11 ms with a single database
-span, before the per-collection loop existed -- the same order of magnitude the
-fix returns to.
+`Before` is trace `30f48a3`, `After` is trace `12a0ddc`. Both ranges come from
+the five consecutive requests the seeding script issues at the end of a run.
 
-![Before -- 32 spans, 523.78 ms](images/jaeger-before-n-plus-1.jpg)
+The two rows are **not** on equal data, and the asymmetry runs the safe way.
+The seeding script mints a token for a fixed `sub` of `seed-user` and the
+SQLite file is never reset, so collections accumulate across runs: the `After`
+row is answering for *twice* as many collections as the `Before` row, in 2
+queries instead of 31, roughly 15x faster. Had the difference gone the other
+way -- less data after the fix -- the comparison would be worthless.
+
+The `After` trace is 3 spans, not 2, because the fix issues two queries by
+design (see below). The number that matters is that it stays 2 whether the
+caller owns 30 collections or 60.
+
+![Before -- 32 spans, 523.78 ms, thirty collections](images/jaeger-before-n-plus-1.jpg)
 
 ![Before -- each child span is its own SELECT against Quotes](images/jaeger-before-span-detail.jpg)
 
-![One round trip, 11 ms -- the shape the fix restores](images/jaeger-single-query-reference.jpg)
+![After -- 3 spans, 33.8 ms, sixty collections](images/jaeger-after-fixed.jpg)
+
+![After -- one SELECT with every quote id in a single IN clause](images/jaeger-after-span-detail.jpg)
+
+For reference, trace `935a952` shows the same endpoint answering in 11 ms with
+a single database span, from before the per-collection loop existed.
+
+![One round trip, 11 ms](images/jaeger-single-query-reference.jpg)
 
 ## The fix
 
