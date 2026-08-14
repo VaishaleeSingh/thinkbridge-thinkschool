@@ -29,21 +29,16 @@ public class SqlServerCollationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        if (!_containerFixture.IsStarted) return;
         _factory = new SqlServerQuotesApiFactory(_containerFixture.ConnectionString);
         using var _ = _factory.CreateClient();
         await Task.CompletedTask;
     }
 
-    public async Task DisposeAsync()
-    {
-        if (_factory != null) await _factory.DisposeAsync();
-    }
+    public async Task DisposeAsync() => await _factory.DisposeAsync();
 
     [Fact]
     public async Task DuplicateEmail_DifferingOnlyByCase_ViolatesUniqueIndexUnderSqlServersDefaultCollation()
     {
-        if (!_containerFixture.IsStarted) return;
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
 

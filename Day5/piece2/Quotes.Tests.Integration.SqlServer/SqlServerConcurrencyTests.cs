@@ -43,7 +43,6 @@ public class SqlServerConcurrencyTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        if (!_containerFixture.IsStarted) return;
         _factory = new SqlServerQuotesApiFactory(_containerFixture.ConnectionString);
         _client = _factory.CreateClient();
         await Task.CompletedTask;
@@ -52,7 +51,7 @@ public class SqlServerConcurrencyTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         _client?.Dispose();
-        if (_factory != null) await _factory.DisposeAsync();
+        await _factory.DisposeAsync();
     }
 
     private async Task<string> CreateAuthenticatedUserAsync()
@@ -83,7 +82,6 @@ public class SqlServerConcurrencyTests : IAsyncLifetime
     [Fact]
     public async Task TwoConcurrentRequests_AddingSameQuoteId_ResultInExactlyOneItem()
     {
-        if (!_containerFixture.IsStarted) return;
         var token = await CreateAuthenticatedUserAsync();
 
         var createRequest = AuthedRequest(HttpMethod.Post, "/api/collections", token);
