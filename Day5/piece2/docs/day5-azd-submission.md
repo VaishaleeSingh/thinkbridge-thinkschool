@@ -8,59 +8,46 @@ https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day5-azd-deployme
 
 ---
 
-## Execution status: prepared, not yet run
+## Execution status: run for real, verified healthy
 
-**This is different from the other Day 5 submissions in this folder, and deliberately so.** The `azure.yaml` and `infra/*.bicep` files below are complete and were reviewed line by line against the project's actual container settings (`QuotesApi.csproj`), but `azd up` has **not** been executed against them yet, and this document does not contain a live FQDN, resource IDs, or health-check output.
+`azd auth login`, `azd env new`, and `azd up`/`azd deploy` were executed against a live Azure subscription. Three real bugs turned up doing that -- a Container Apps Environment quota, an image-path mismatch, and an Alpine/RID mismatch -- all diagnosed from live error text and fixed for real, not assumed. Full detail on all three, including the exact commands and error output, is in `docs/azd-deployment.md`.
 
-The reason: this submission was prepared from an automated cloud sandbox that has no network route to any Azure endpoint (`login.microsoftonline.com`, `management.azure.com`, and ACR are all unreachable from it — confirmed, not assumed). `azd`/`az` were installed and validated locally, but authenticating and provisioning has to happen from a machine that can actually reach Azure — this one, run from a normal terminal.
+The service is deployed as Container App `quotes-api-cowork` (not `quotes-api` -- see `docs/azd-deployment.md` section 1 for why) in resource group `thinkschool-azd-rg`, `centralindia`, sharing the existing `thinkschool-env` Container Apps Environment.
 
-**To complete this submission**, run the three commands in §5 of `docs/azd-deployment.md` from `Day5/piece2/` on a machine with Azure access, then replace this section with the real output: the resource group, the ACR login server, the Container App FQDN, and the result of each `curl` in the verification checklist below.
+Live endpoint: `https://quotes-api-cowork.whitestone-71ebd55e.centralindia.azurecontainerapps.io`
 
----
-
-## What running `azd up` will do
-
-```
-azd auth login
-azd env new thinkschool-azd --location centralindia
-azd up
-```
-
-- Creates resource group `thinkschool-azd-rg` in `centralindia`.
-- Provisions a Basic-SKU Azure Container Registry, a Log Analytics workspace, and a Container Apps Environment `thinkschool-azd-env`.
-- Builds `QuotesApi.csproj` into an OCI image (alpine base, linux-musl-x64, per the container settings already in the `.csproj` — see `docs/containerising.md`) and pushes it to the new registry.
-- Deploys it as Container App `quotes-api`: external ingress, target port 8080, liveness probe `/health/live`, readiness probe `/health/ready`, KEDA HTTP concurrency scale rule (min 1 / max 5 replicas, 50 concurrent requests).
-
-## Verification checklist (fill in after running `azd up`)
+## Verification checklist
 
 ```powershell
-azd show
-curl -i https://<fqdn>/health
-curl -i https://<fqdn>/health/live
-curl -i https://<fqdn>/health/ready
-curl -i https://<fqdn>/api/quotes
+curl https://quotes-api-cowork.whitestone-71ebd55e.centralindia.azurecontainerapps.io/health
+curl https://quotes-api-cowork.whitestone-71ebd55e.centralindia.azurecontainerapps.io/health/live
+curl https://quotes-api-cowork.whitestone-71ebd55e.centralindia.azurecontainerapps.io/health/ready
+curl https://quotes-api-cowork.whitestone-71ebd55e.centralindia.azurecontainerapps.io/api/quotes
 ```
 
 | Check | Expected | Actual |
 | --- | --- | --- |
-| `azd show` — Container App status | Succeeded / Healthy | _pending_ |
-| `GET /health` | `200 OK` | _pending_ |
-| `GET /health/live` | `200 OK` | _pending_ |
-| `GET /health/ready` | `200 OK` | _pending_ |
-| `GET /api/quotes` | `200 OK` with quote payload | _pending_ |
+| Container app running state | `Running` | **`Running`** -- confirmed via `az containerapp replica list` |
+| `GET /health` | `200 OK` | **`200`** -- `{"service":"QuotesApi","status":"Healthy","totalDurationMs":2.6,"checks":[{"name":"database","status":"Healthy","durationMs":2.18,"error":false}]}` |
+| `GET /health/live` | `200 OK` | **`200`** -- `{"service":"QuotesApi","status":"Healthy","totalDurationMs":0.01,"checks":[]}` |
+| `GET /health/ready` | `200 OK` | **`200`** -- `{"service":"QuotesApi","status":"Healthy","totalDurationMs":0.91,"checks":[{"name":"database","status":"Healthy","durationMs":0.64,"error":false}]}` |
+| `GET /api/quotes` (no token) | `401` | **`401`** -- expected: this endpoint requires a JWT, per Day 4's auth design. Not a failure. |
+
+`/health/live` running with an empty `checks` array against `/health` and `/health/ready` each running the database check is the same split `docs/containerising.md` documents for the local build -- it holds identically in the deployed container.
 
 ---
 
 ## Notes for Mentor
 
-### Bugs found and fixed while preparing this workspace
+### Three real bugs, found by actually running `azd up`, not by reading the Bicep
 
-An earlier draft of these files (present before this session) had two problems that would have caused a deployment to look successful once and then quietly regress:
+1. **Container Apps Environment quota.** The first `azd up` failed provisioning with `MaxNumberOfRegionalEnvironmentsInSubExceeded` -- this subscription allows one Container Apps Environment per region, and the manual exercise's `thinkschool-env` already occupies `centralindia`. `infra/resources.bicep` now references that environment as `existing` rather than provisioning a second one. A related discovery: a container app literally named `quotes-api-azd` already existed in that shared environment from a separate, concurrent attempt at this exercise (`ContainerAppNameConflictInCluster`) -- confirmed broken (`ImagePullBackOff`) and unrelated to this deployment before renaming this workspace's app to `quotes-api-cowork`.
 
-1. `main.bicep` hardcoded the same resource group name (`thinkschool-rg`) already used by the manual `az cli` exercise earlier in Day 5, and `resources.bicep` referenced that exercise's Container Apps Environment (`thinkschool-env`) as `existing` rather than provisioning its own. Running `azd down` on this workspace would have deleted infrastructure the other exercise still owns. Fixed by provisioning a dedicated `thinkschool-azd-rg` / `thinkschool-azd-env`.
-2. `main.parameters.json` only mapped `environmentName` and `location`, omitting `quotesApiExists` and `quotesApiImageName`. Without those two parameters wired to azd's `${SERVICE_QUOTES_API_RESOURCE_EXISTS}` / `${SERVICES_QUOTES_API_IMAGE_NAME}` environment variables, every `azd provision` would silently reset the container app's image back to the `aci-helloworld` placeholder, even after a real image had been built and pushed. Fixed by adding both parameters.
+2. **Image-path mismatch.** `azd deploy` computes its own image repository path per service, but `QuotesApi.csproj`'s `ContainerRepository: quotes-api` (needed for the manual exercise's local image naming) overrides it during the actual `dotnet publish`, so the image is pushed to a different path than the one azd records and feeds into the Bicep. Every `azd up`/`azd deploy` leaves the container app pointed at a manifest that was never pushed (`MANIFEST_UNKNOWN`), reproduced twice with two different tags. `azd`'s own `SUCCESS` message does not catch this. The fix is a documented, one-line `az containerapp update --image` correction after every deploy (`docs/azd-deployment.md` section 4) -- an automated `postdeploy` hook was attempted first and abandoned after it failed on an azd hook-schema error, rather than spending further live-deployment cycles on it.
 
-Full detail on both, and on the rest of the Bicep, is in `docs/azd-deployment.md`.
+3. **Alpine is not viable through azd.** `azd`'s built-in .NET SDK container integration always builds with `-r linux-x64` hardcoded, with no azure.yaml setting to change it. `ContainerFamily: alpine` (the manual exercise's documented choice, `docs/containerising.md`) needs the matching musl RID to work at all; without it, the container built, started, and crashed on first SQLite access -- the exact `fcntl64: symbol not found` failure `docs/containerising.md` section 1 already documents, just via a different path to the same glibc/musl mismatch. Fixed by removing `ContainerFamily`/`ContainerBaseImage` from the csproj. This does not change the manual exercise's outcome: its command still passes the musl RID explicitly, and the SDK still resolves that to the Alpine image on its own.
+
+Full detail on all three, including live error text and the exact commands used to diagnose each one, is in `docs/azd-deployment.md`.
 
 ### `azure.yaml`
 
@@ -77,12 +64,14 @@ services:
 
 ## What did you learn this session?
 
-- `azd` collapses infrastructure provisioning, container build, registry push, and deployment into one command, but that only works correctly if `main.parameters.json` actually forwards the image name/exists flags `azd` computes after building each service — leaving them out doesn't fail loudly, it just makes `azd provision` keep resetting the deployed image.
-- Reusing a resource group or Container Apps Environment across two independent `azd`/`az cli` exercises creates a hidden coupling: `azd down` deletes by tag, not by what it created itself, so anything else living in that resource group is at risk.
-- Confirming what a sandboxed execution environment can actually reach on the network (rather than assuming a CLI install implies connectivity) is worth doing before treating any "it works" claim as verified.
+- `azd`'s own `SUCCESS: Your application was provisioned and deployed to Azure` message is not proof of a working deployment. All three real bugs here -- the quota, the image path, and the Alpine/RID mismatch -- happened *underneath* a run that reported success. The only real check is hitting the actual endpoints.
+- A container app "running" or an ACR repository existing are each necessary but not sufficient. The image-path bug produced a registry with the real image in it, and a container app that looked correctly configured, while pointed at a path where no image existed.
+- Command-line MSBuild properties (`-r`, `-p:ContainerRepository`, etc.) interact with project-file properties in ways that aren't obvious from the file alone, and the two interact differently property by property: a project file's `<ContainerRepository>` won out over azd's own `-p:ContainerRepository`, but a project file's `<RuntimeIdentifier>` did not win out over azd's `-r`. Verifying this needed two separate live re-deployments, not a reading of MSBuild's precedence rules.
+- A tool designed to be one command (`azd up`) is still only as correct as the assumptions baked into its build integration. Here, that integration assumes a service's container settings never conflict with its own naming/RID conventions -- an assumption this project's existing, already-working Alpine setup violated.
 
 ## What would break this?
 
-- Running `azd up` a second time without the `main.parameters.json` fix would revert the running container back to the `aci-helloworld` placeholder image, even though the first deploy looked correct.
-- Pointing this workspace's `main.bicep` at the existing `thinkschool-rg`/`thinkschool-env` names would make `azd down` here capable of deleting the separate manual-exercise deployment.
+- Running `azd up`/`azd deploy` again without the manual `az containerapp update --image` correction (`docs/azd-deployment.md` section 4) leaves the container app pointed at an image that was never pushed, even though azd reports success.
+- Re-adding `ContainerFamily: alpine` (or a pinned Alpine `ContainerBaseImage`) to `QuotesApi.csproj` would reintroduce the SQLite crash on the next azd-built image, since azd has no way to pair it with the required musl RID.
 - Mismatched target port or probe paths between `resources.bicep` and the app's actual container settings (port 8080, `/health/live`, `/health/ready`) would fail ingress routing or health probes exactly as in the manual exercise.
+- Provisioning a second Container Apps Environment in `centralindia` on this subscription will fail with the same quota error found here, regardless of resource group.

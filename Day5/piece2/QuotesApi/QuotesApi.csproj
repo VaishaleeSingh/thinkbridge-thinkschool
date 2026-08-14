@@ -19,31 +19,43 @@
        publish command and the reasoning behind these properties are in
        docs/containerising.md.
 
-       Two of these are not what the exercise text suggests.
-
        ContainerRepository, not ContainerImageName: the property was
        renamed in .NET 8, and the old name is the deprecated spelling.
+       Both are kept here (see below) so the local/manual build in
+       docs/containerising.md keeps producing "quotes-api", not an
+       SDK-default name derived from the assembly.
 
-       ContainerFamily, not a pinned ContainerBaseImage tag. Pinning
-       "mcr.microsoft.com/dotnet/aspnet:10.0-alpine" hardcodes a tag that
-       must be hand edited at every framework upgrade, in a file nobody
-       thinks to check.
+       ContainerFamily and ContainerBaseImage are gone. They pinned this
+       project to the Alpine base image, which docs/azd-deployment.md
+       found does not survive being built through azd: azd's built-in
+       .NET SDK container integration (host: containerapp, language:
+       dotnet) always invokes `dotnet publish` with `-r linux-x64`
+       hardcoded, and there is no azure.yaml setting or hook that changes
+       that RID for a language: dotnet service. A command-line `-r` is a
+       global MSBuild property; it wins over anything this project could
+       set, so there was never a way to force linux-musl-x64 through azd.
+       Left in place, ContainerFamily: alpine still selected the Alpine
+       base image while the RID stayed glibc, reproducing section 1 of
+       docs/containerising.md on every azd deploy: the image built,
+       started, and died the instant EF Core touched SQLite
+       ("fcntl64: symbol not found").
 
-       Alpine here is NOT free, and this is the part that cost real time.
-       Alpine is musl, not glibc, so this project must be published with
-       an os of "linux-musl" (RID linux-musl-x64). Publishing the plain
-       "linux" os against an Alpine base produces an image that builds
-       cleanly, starts, and then dies the moment EF Core touches SQLite:
-       the linux-x64 build of the e_sqlite3 native library cannot relocate
-       against musl, failing with "fcntl64: symbol not found". Nothing
-       earlier in the pipeline catches it. See docs/containerising.md,
-       section 1, for the stack trace.
+       Removing both properties does not change the manual exercise's
+       outcome. `dotnet publish --os linux-musl --arch x64` (still the
+       documented command in docs/containerising.md) requests the musl
+       RID explicitly on the command line, and the .NET SDK resolves a
+       *-musl-x64 RID to the Alpine base image on its own -- that always
+       did the real work; ContainerFamily was redundant with it, not
+       load-bearing. What changes is only the azd path: with no family
+       pinned, azd's own `-r linux-x64` now pairs with the SDK's default
+       (Debian-based, glibc) image, which actually matches the RID it
+       publishes with, instead of a musl base paired with a glibc binary.
+       Full detail, including the live crash log, is in
+       docs/azd-deployment.md.
   -->
   <PropertyGroup>
     <ContainerRepository>quotes-api</ContainerRepository>
     <ContainerImageName>quotes-api</ContainerImageName>
-    <ContainerFamily>alpine</ContainerFamily>
-    <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:10.0-alpine</ContainerBaseImage>
 
     <!-- Both, deliberately. The documentation says ContainerImageTag
          falls back to $(Version), so this file first set Version alone on
