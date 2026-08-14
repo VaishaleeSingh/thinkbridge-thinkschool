@@ -245,12 +245,20 @@ screenshot — the values are copied verbatim from the running container.)
 
 | Base | RID | Disk usage | Content size |
 |---|---|---|---|
+| Default (Debian) | `linux-x64` | 367 MB | 103 MB |
 | Alpine | `linux-musl-x64` | 195 MB | 59.3 MB |
-| Default (Debian) | `linux-x64` | _to measure_ | _to measure_ |
+| | | **47% smaller** | **42% smaller** |
 
 Columns as `docker images` reports them: disk usage counts shared base layers,
 content size is this image's own compressed content. The second is the number
-that matters for a pull.
+that matters for a pull, and 59.3 MB against 103 MB is a real difference on a
+cold node or a metered link.
+
+Worth weighing against what section 1 cost: an image that built, started, and
+died, and an hour finding out why. Alpine is worth choosing here, but the price
+is a musl RID that has to be right and a native dependency surface that has to
+be checked. On a project with more native dependencies than this one, that
+trade tips the other way.
 
 ```powershell
 # Debian baseline: glibc base image, glibc RID
