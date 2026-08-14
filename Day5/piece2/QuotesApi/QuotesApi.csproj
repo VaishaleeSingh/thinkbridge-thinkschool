@@ -27,21 +27,31 @@
        ContainerFamily, not a pinned ContainerBaseImage tag. Pinning
        "mcr.microsoft.com/dotnet/aspnet:10.0-alpine" hardcodes a tag that
        must be hand edited at every framework upgrade, in a file nobody
-       thinks to check, and it can silently disagree with the runtime
-       identifier: an x64 Linux publish resolves linux-x64, which is
-       glibc, while Alpine is musl (linux-musl-x64). ContainerFamily
-       instead asks the SDK for the Alpine variant of the base image it
-       has already chosen to match this project's TFM and RID, so the two
-       cannot drift apart.
+       thinks to check.
+
+       Alpine here is NOT free, and this is the part that cost real time.
+       Alpine is musl, not glibc, so this project must be published with
+       an os of "linux-musl" (RID linux-musl-x64). Publishing the plain
+       "linux" os against an Alpine base produces an image that builds
+       cleanly, starts, and then dies the moment EF Core touches SQLite:
+       the linux-x64 build of the e_sqlite3 native library cannot relocate
+       against musl, failing with "fcntl64: symbol not found". Nothing
+       earlier in the pipeline catches it. See docs/containerising.md,
+       section 1, for the stack trace.
   -->
   <PropertyGroup>
     <ContainerRepository>quotes-api</ContainerRepository>
     <ContainerFamily>alpine</ContainerFamily>
 
-    <!-- The image tag follows this. ContainerImageTag defaults to
-         $(Version), so setting both would create two places to bump a
-         version number and one of them would eventually be forgotten. -->
+    <!-- Both, deliberately. The documentation says ContainerImageTag
+         falls back to $(Version), so this file first set Version alone on
+         the theory that one version number is better than two. The image
+         that came out was tagged "latest". Whatever the fallback actually
+         keys off, it is not this, so the tag is stated outright: an image
+         tagged "latest" is unversioned in practice, and cannot be rolled
+         back to. Version stays because it also stamps the assembly. -->
     <Version>0.1.0</Version>
+    <ContainerImageTag>0.1.0</ContainerImageTag>
   </PropertyGroup>
 
   <ItemGroup>

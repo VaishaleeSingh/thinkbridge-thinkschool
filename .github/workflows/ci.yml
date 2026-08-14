@@ -159,6 +159,11 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # linux-musl, not linux: the base image is Alpine, and a glibc RID
+      # ships a glibc build of the SQLite native library into a musl image.
+      # That combination builds and starts and then dies on first database
+      # access. See docs/containerising.md section 1.
+      #
       # Builds the image into the runner's local Docker daemon. Nothing is
       # pushed: publishing to a registry needs credentials that do not
       # belong in this repository, and the property this job protects is
@@ -166,7 +171,7 @@ jobs:
       - name: Build container image
         run: >
           dotnet publish Day5/piece2/QuotesApi
-          --os linux
+          --os linux-musl
           --arch x64
           --configuration Release
           /t:PublishContainer

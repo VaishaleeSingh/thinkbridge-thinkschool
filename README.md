@@ -98,7 +98,7 @@ As a container (no Dockerfile — the image is built from the project):
 
 ```bash
 cd Day5/piece2
-dotnet publish QuotesApi --os linux --arch x64 /t:PublishContainer
+dotnet publish QuotesApi --os linux-musl --arch x64 /t:PublishContainer
 docker run --rm -p 8080:8080 -e Jwt__Secret="<at least 32 characters>" quotes-api:0.1.0
 curl http://localhost:8080/health
 ```
