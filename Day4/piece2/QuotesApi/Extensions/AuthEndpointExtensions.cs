@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using QuotesApi.Configuration;
 using QuotesApi.Data;
 using QuotesApi.Services;
 
@@ -73,6 +75,7 @@ public static class AuthEndpointExtensions
             IRefreshTokenService refreshTokenService,
             IAuthService authService,
             QuotesDbContext db,
+            IOptions<JwtOptions> jwtOptions,
             CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(request.RefreshToken))
@@ -110,7 +113,15 @@ public static class AuthEndpointExtensions
             storedToken.ReplacedByToken = newRefreshToken;
             await db.SaveChangesAsync(cancellationToken);
 
-            const int expiresIn = 900; // 15 minutes -- matches AuthService.AccessTokenLifetimeMinutes
+            // Derived from the SAME configured lifetime the token was
+            // actually minted with, rather than a hand-copied constant. It
+            // was previously the literal 900 with a comment asking whoever
+            // changed AuthService to remember to change this too. Nothing
+            // enforced that; change one and the API keeps issuing valid
+            // tokens while telling clients the wrong expiry, so they
+            // refresh too late (users see spurious 401s) or too early
+            // (needless load). No test would have caught it.
+            var expiresIn = (int)jwtOptions.Value.AccessTokenLifetime.TotalSeconds;
 
             return Results.Ok(new LoginResponse(
                 newAccessToken,

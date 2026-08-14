@@ -4,6 +4,8 @@ using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Options;
+using QuotesApi.Configuration;
 using QuotesApi.Data;
 using QuotesApi.Models;
 using QuotesApi.Observability;
@@ -36,7 +38,21 @@ public interface IAuthService
 public sealed class AuthService : IAuthService
 {
     private readonly QuotesDbContext _db;
-    private readonly IConfiguration _config;
+
+    // IOptions, NOT IOptionsSnapshot, and that choice is deliberate.
+    //
+    // IOptionsSnapshot re-reads configuration per request, which sounds
+    // strictly better. It would be actively harmful here. The other half of
+    // this feature -- the TokenValidationParameters in
+    // InfrastructureExtensions that decide whether a token is acceptable --
+    // is baked into the authentication handler once at startup and cannot
+    // be re-read. If this side picked up a changed issuer, audience or
+    // signing key while the validating side kept the old one, the API would
+    // mint tokens it then rejects itself: every caller gets 401, and
+    // nothing anywhere logs an error explaining why. Fixing the signing
+    // side alone to re-read config would create precisely the drift this
+    // options type was introduced to eliminate.
+    private readonly IOptions<JwtOptions> _jwtOptions;
     private readonly IRefreshTokenService _refreshTokenService;
     private readonly ILogger<AuthService> _logger;
 
@@ -47,12 +63,6 @@ public sealed class AuthService : IAuthService
     // test happened to run." Production gets the real SystemClock via DI;
     // tests substitute a FakeClock.
     private readonly IClock _clock;
-
-    // 15 minutes. Kept short on purpose: if an access token is ever
-    // stolen, it stops working quickly on its own. Long-lived sessions are
-    // handled by refresh tokens instead (7 days, see RefreshTokenService),
-    // which can be individually revoked and are rotated on every use.
-    private const int AccessTokenLifetimeMinutes = 15;
 
     // This project has no roles/admin table (see MustOwnQuoteHandler for
     // why): every logged-in user gets the same full set of scopes here.
@@ -66,13 +76,13 @@ public sealed class AuthService : IAuthService
 
     public AuthService(
         QuotesDbContext db,
-        IConfiguration config,
+        IOptions<JwtOptions> jwtOptions,
         IRefreshTokenService refreshTokenService,
         ILogger<AuthService> logger,
         IClock clock)
     {
         _db = db;
-        _config = config;
+        _jwtOptions = jwtOptions;
         _refreshTokenService = refreshTokenService;
         _logger = logger;
         _clock = clock;
@@ -136,7 +146,7 @@ public sealed class AuthService : IAuthService
         // A fresh login always starts a brand new token family (no
         // familyId passed in) -- see RefreshTokenService.GenerateTokenAsync.
         var refreshToken = await _refreshTokenService.GenerateTokenAsync(user.Id, cancellationToken);
-        const int expiresIn = AccessTokenLifetimeMinutes * 60;
+        var expiresIn = (int)_jwtOptions.Value.AccessTokenLifetime.TotalSeconds;
 
         _logger.LogInformation("User {UserId} logged in successfully", user.Id);
 
@@ -151,12 +161,14 @@ public sealed class AuthService : IAuthService
 
     public string GenerateAccessToken(User user)
     {
-        var secret = _config["Jwt:Secret"]
-            ?? throw new InvalidOperationException(
-                "Jwt:Secret is missing from configuration. " +
-                "Add it under appsettings.json -> \"Jwt\": { \"Secret\": \"...\" }.");
+        // No null-check or "missing config" throw here any more: the
+        // options are validated at startup (see AddInfrastructure), so by
+        // the time any request reaches this method the values are known
+        // good. A guard here would be unreachable code pretending to be
+        // safety.
+        var jwt = _jwtOptions.Value;
 
-        var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+        var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Secret));
         var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
 
         // "sub" (the short, raw claim name) is what the rest of the app --
@@ -176,11 +188,11 @@ public sealed class AuthService : IAuthService
         var now = _clock.UtcNow.UtcDateTime;
 
         var token = new JwtSecurityToken(
-            issuer: "https://yourapp.com",
-            audience: "quotes-api",
+            issuer: jwt.Issuer,
+            audience: jwt.Audience,
             claims: claims,
             notBefore: now,
-            expires: now.AddMinutes(AccessTokenLifetimeMinutes),
+            expires: now.Add(jwt.AccessTokenLifetime),
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

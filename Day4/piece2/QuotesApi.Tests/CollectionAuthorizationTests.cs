@@ -35,7 +35,7 @@ public class CollectionAuthorizationTests : IAsyncLifetime
 
     private static string CreateToken(string userId, params string[] scopes)
     {
-        const string secret = "your-existing-custom-jwt-secret-keep-this-same";
+        const string secret = TestEnvironment.SigningKey;
         var signingKey = Encoding.UTF8.GetBytes(secret);
 
         var claims = new List<Claim>

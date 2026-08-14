@@ -5,6 +5,8 @@ using QuotesApi.Models;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
 using System.Security.Claims;
+using Microsoft.Extensions.Options;
+using QuotesApi.Configuration;
 
 namespace QuotesApi.Extensions;
 
@@ -43,14 +45,26 @@ public static class QuoteEndpointExtensions
             int page,
             int size,
             IQuoteRepository repository,
+            // IOptionsSnapshot, not IOptions, and here that IS the right
+            // choice -- unlike JwtOptions (see AuthService for why that one
+            // must stay fixed for the process lifetime). A page-size
+            // ceiling is an operational dial: if a client starts asking for
+            // huge pages and the database feels it, someone should be able
+            // to lower the limit in configuration and have the very next
+            // request respect it, with no redeploy and no restart. Nothing
+            // else in the app has to agree with this value, so re-reading
+            // it per request cannot cause anything to drift out of step.
+            IOptionsSnapshot<PaginationOptions> paginationOptions,
             CancellationToken cancellationToken) =>
         {
-            if (page < 1 || size < 1 || size > 100)
+            var maxPageSize = paginationOptions.Value.MaxPageSize;
+
+            if (page < 1 || size < 1 || size > maxPageSize)
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["page"] = new[] { "Page must be at least 1." },
-                    ["size"] = new[] { "Size must be between 1 and 100." }
+                    ["size"] = new[] { $"Size must be between 1 and {maxPageSize}." }
                 });
             }
 

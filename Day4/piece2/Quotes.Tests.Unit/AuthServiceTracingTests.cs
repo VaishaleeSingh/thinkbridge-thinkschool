@@ -1,8 +1,9 @@
 using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using QuotesApi.Configuration;
 using NSubstitute;
 using Quotes.Tests.Unit.TestDoubles;
 using QuotesApi.Data;
@@ -52,16 +53,17 @@ public class AuthServiceTracingTests
             .Options;
         var db = new QuotesDbContext(options);
 
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Secret"] = "unit-test-secret-that-is-long-enough-for-hmacsha256"
-            })
-            .Build();
+        var jwtOptions = Options.Create(new JwtOptions
+        {
+            Secret = "unit-test-secret-that-is-long-enough-for-hmacsha256",
+            Issuer = "https://issuer.under.test",
+            Audience = "audience-under-test",
+            AccessTokenLifetime = TimeSpan.FromMinutes(15)
+        });
 
         var sut = new AuthService(
             db,
-            config,
+            jwtOptions,
             Substitute.For<IRefreshTokenService>(),
             Substitute.For<ILogger<AuthService>>(),
             new FakeClock(DateTimeOffset.UtcNow));

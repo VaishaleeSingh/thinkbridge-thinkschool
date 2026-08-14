@@ -33,7 +33,7 @@ public class CancellationTests : IAsyncLifetime
     // on another test file's internals.
     private static string CreateAuthorizedToken()
     {
-        const string secret = "your-existing-custom-jwt-secret-keep-this-same";
+        const string secret = TestEnvironment.SigningKey;
         var signingKey = Encoding.UTF8.GetBytes(secret);
 
         var claims = new List<Claim>
