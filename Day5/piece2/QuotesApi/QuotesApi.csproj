@@ -86,8 +86,7 @@
          The repository already has the answer for anything real, in the
          SQL Server provider and migrations under
          QuotesApi.Migrations.SqlServer. See docs/containerising.md. -->
-    <ContainerEnvironmentVariable Include="ConnectionStrings__DefaultConnection"
-                                  Value="Data Source=/tmp/quotes.db" />
+    <ContainerEnvironmentVariable Include="ConnectionStrings__DefaultConnection" Value="Data Source=/tmp/quotes.db" />
   </ItemGroup>
 
   <ItemGroup>
@@ -100,6 +99,21 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.10" />
+    <!-- Microsoft's wrapper over Polly v8: it is what supplies
+         AddResilienceHandler and the Http*StrategyOptions types used in
+         Extensions/ResilienceExtensions.cs. Polly itself comes in
+         transitively; referencing it separately would risk pinning a
+         different version than this package was built against.
+
+         Version pinned to match the other Microsoft.Extensions.* packages
+         in this file. This library ships out of dotnet/extensions on the
+         runtime's own cadence, so 10.0.x is the line that pairs with
+         net10.0 — but the exact patch could not be verified from the
+         sandbox this was written in (no network path to nuget.org). If
+         restore fails on "package not found" rather than a real problem,
+         run `dotnet add QuotesApi package Microsoft.Extensions.Http.Resilience`
+         to pin whatever the current 10.0.x actually is. -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.9.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
