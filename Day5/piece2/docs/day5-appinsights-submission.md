@@ -141,11 +141,32 @@ requests
 
 ### Results
 
-> **TODO — paste the actual result table from the Logs blade here, and a screenshot as `images/appinsights-kql.png`.**
-
 | name | count_ | p50 (ms) | p99 (ms) |
 | --- | --- | --- | --- |
-| | | | |
+| `GET /health` | 4 | 1.41 | 108.0966 |
+| `GET /health/ready` | 6 | 1.1844 | 65.0681 |
+| `GET /api/quotes/` | 6 | 0.3469 | 6.1753 |
+| `GET /health/live` | 6 | 0.2186 | 1.7775 |
+
+![The query returning real numbers in the Logs blade](images/appinsights-kql-results.jpg)
+
+Three things in that table are worth reading rather than glancing at:
+
+- **`GET /health/live` has the lowest p50 of anything here (0.22 ms).** It runs no checks at all. `/health/ready` (1.18 ms) and `/health` (1.41 ms) both run the database check, and both sit roughly 5x higher. That is the same split `docs/containerising.md` documents from the JSON bodies, now visible as a latency number.
+- **`GET /health`'s p99 is 108 ms against a p50 of 1.41 ms** — a 75x spread on four requests. That is first-request cost (JIT, EF model build, first SQLite open), not a slow endpoint. It is also why p99 on a handful of requests describes the warm-up, not the steady state: with n=4, p99 *is* the slowest request.
+- **`GET /api/quotes/` was recorded even though every one of those calls returned 401.** A rejected request is still a request; `requests` records it with its duration, which is exactly why this table shows it at all.
+
+**The counts are lower than the traffic sent.** 100 requests went out (25 x 4 endpoints); the table totals 22. Two candidates, and they are worth distinguishing rather than assuming: ingestion still catching up at query time (the query ran ~3 minutes after the traffic), or the Azure Monitor distro applying its own sampling. If it is sampling, `count()` is counting *stored* records rather than requests, and the honest aggregate is `sum(itemCount)` — see the note in `docs/kql/endpoint-latency.kql`.
+
+### Where this traffic came from
+
+This traffic was generated against the app running **locally** (`dotnet run`, `http://localhost:5059`) with `ApplicationInsights__ConnectionString` set to this same component, not against the Container App.
+
+That was not a shortcut, it was the only path available at the time: the Container App's own deployment was wedged. `azd up` had re-applied the Bicep with an empty image name (the image-path bug in `docs/azd-deployment.md` section 4), producing revision `--0000006` on the `aci-helloworld` placeholder, which never activated — *Deployment Progress Deadline Exceeded, 0/1 replicas ready*. The only active revision was `--0000004`, created before the connection string existed, so the deployed app had nothing to export with. Adding the variable to the app template succeeded, but every attempt to roll a new revision returned `ContainerAppOperationInProgress` for the better part of an hour, with `provisioningState` stuck at `InProgress` on the platform side.
+
+![Revision list: only --0000004 active, --0000006 deactivated after failing to activate](images/containerapp-revisions.jpg)
+
+The telemetry pipeline being verified is identical either way — same app, same `ObservabilityExtensions` code path, same connection string, same component. What the local run does not exercise is the container's own environment injection, which is a real gap and is called out here rather than papered over.
 
 Expect the health probes to dominate the row count: the liveness and readiness probes in `infra/resources.bicep` run every 10 seconds each, so over a 30-minute window they contribute roughly 180 requests apiece before any manual traffic is counted. `/health/live` should show the lowest p50 of anything in the table — it runs no checks at all — and `/health/ready` a slightly higher one, since it runs the database check. That split is the same one `docs/containerising.md` documents locally, now visible as a latency number rather than a JSON body.
 
@@ -177,7 +198,11 @@ EndpointLatency(24h) | where name !startswith "GET /health"
 
 The query text is committed at `docs/kql/endpoint-latency.kql`, including the probe-excluding variant. The function itself is saved in the **Log Analytics workspace**, not in the App Insights component — a workspace-based component stores its tables in the workspace, and saved functions live beside them. That matters for `azd down`: the function disappears with the workspace, and this file is the only copy that survives.
 
-> **TODO — screenshot of the saved function in the Logs blade as `images/appinsights-function.png`.**
+Saved as `EndpointLatency`:
+
+![Portal confirming the query was saved as the function EndpointLatency](images/appinsights-function-saved.jpg)
+
+Note on the parameter: the App Insights Logs blade's *Save as function* dialog offers only a name and the query body — no function-parameters field. The saved function therefore carries the literal `ago(30m)`. To get the parameterised `EndpointLatency(window)` described above, save it from the **Log Analytics workspace's** Logs blade instead (which does expose function parameters), or use the `az monitor log-analytics workspace saved-search create` command below, which takes `--function-parameters` directly.
 
 ---
 
@@ -185,11 +210,13 @@ The query text is committed at `docs/kql/endpoint-latency.kql`, including the pr
 
 | Check | Expected | Actual |
 | --- | --- | --- |
-| `ApplicationInsights__ConnectionString` present on the running revision | set | **TODO** |
-| `requests` table returns rows within ~3 min of traffic | non-empty | **TODO** |
-| Health probe rows present | `GET /health/live`, `GET /health/ready` | **TODO** |
-| `GET /health/live` has the lowest p50 in the table | yes | **TODO** |
-| Query saved as a function and callable as `EndpointLatency(30m)` | yes | **TODO** |
+| Application Insights component exists, workspace-backed | yes | **yes** — `appi-quotes-api-qn4pdkxclsa6s`, workspace `logqn4pdkxclsa6s` |
+| `ApplicationInsights__ConnectionString` on the app template | set | **set** — confirmed via `az containerapp show --query "properties.template.containers[0].env[].name"` |
+| Same variable on the *running* revision | set | **no** — only `--0000004` is active, and it predates the variable (see "Where this traffic came from") |
+| `requests` table returns rows within ~3 min of traffic | non-empty | **yes** — 4 rows, 22 records |
+| Health probe rows present | `/health`, `/health/live`, `/health/ready` | **yes** — all three |
+| `GET /health/live` has the lowest p50 in the table | yes | **yes** — 0.2186 ms, lowest of the four |
+| Query saved as a function | yes | **yes** — `EndpointLatency`, portal confirmed |
 
 ---
 
