@@ -26,26 +26,39 @@ public class CollectionRepository : ICollectionRepository
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
-        var result = new List<CollectionWithQuotes>(collections.Count);
+        // Two round trips, not one-per-collection. Every quote id the caller
+        // could possibly need is gathered first and fetched in a single
+        // query; the per-collection shaping then happens in memory against
+        // that lookup. The round trip count is now a constant -- it does not
+        // move when the caller has 15 collections instead of 3, which is the
+        // whole point of the fix.
+        var quoteIds = collections
+            .SelectMany(collection => collection.Items)
+            .Select(item => item.QuoteId)
+            .Distinct()
+            .ToList();
 
-        foreach (var collection in collections)
-        {
-            var quoteIds = collection.Items.Select(item => item.QuoteId).ToList();
-
-            var quotes = await _db.Quotes
+        var quotesById = quoteIds.Count == 0
+            ? new Dictionary<int, QuoteSummary>()
+            : await _db.Quotes
                 .Where(quote => quoteIds.Contains(quote.Id))
                 .AsNoTracking()
-                .ToListAsync(cancellationToken);
+                .Select(quote => new QuoteSummary(quote.Id, quote.Author, quote.Text))
+                .ToDictionaryAsync(quote => quote.Id, cancellationToken);
 
-            result.Add(new CollectionWithQuotes(
+        return collections
+            .Select(collection => new CollectionWithQuotes(
                 collection.Id,
                 collection.Name,
-                quotes
-                    .Select(quote => new QuoteSummary(quote.Id, quote.Author, quote.Text))
-                    .ToList()));
-        }
-
-        return result;
+                collection.Items
+                    // A missing id means the quote was deleted out from under
+                    // the collection. Skip it rather than throwing -- the old
+                    // per-collection query silently did the same thing.
+                    .Select(item => quotesById.TryGetValue(item.QuoteId, out var quote) ? quote : null)
+                    .Where(quote => quote is not null)
+                    .Select(quote => quote!)
+                    .ToList()))
+            .ToList();
     }
 
     public async Task<Collection?> GetByIdAsync(

@@ -1,11 +1,12 @@
 # Diagnosing a slow endpoint from its trace
 
-`GET /api/collections`, diagnosed from the Jaeger trace, fixed, and confirmed
-fixed by a second trace.
+`GET /api/collections`, diagnosed from its Jaeger trace, fixed, and kept fixed
+by a test that fails if the shape comes back.
 
 ## Reproducing
 
-With Jaeger running and the API started:
+With Jaeger running (`docker run -d --name jaeger -p 16686:16686 -p 4317:4317
+jaegertracing/all-in-one`) and the API started:
 
 ```powershell
 cd scripts
@@ -13,87 +14,136 @@ cd scripts
 .\seed-and-hit.ps1 -Collections 30       # 30 -- watch the span count follow
 ```
 
-Then http://localhost:16686 -> service `QuotesApi` -> `GET /api/collections`.
+Then http://localhost:16686 -> service `QuotesApi` -> operation
+`GET /api/collections/`.
 
 ## The note
 
-> The trace for `GET /api/collections` showed the request span containing
-> sixteen child database spans: one `SELECT` over `Collections`, then fifteen
-> near-identical `SELECT`s against `CollectionItem`, one per collection
-> returned. The slow span isn't any single query -- each is sub-millisecond --
-> it's their number. `ListByOwnerAsync` loaded the collections, then loaded
-> each one's `Items` separately inside a `foreach`, so query count grew
-> linearly with rows: a textbook N+1. On local SQLite that is merely visible;
-> against a networked database every round trip costs real milliseconds and
-> the endpoint degrades as customers add data. I'd fix it by loading `Items`
-> in the same query with `.Include(x => x.Items)`, making it one query
-> regardless of how many collections come back.
+> The trace for `GET /api/collections` came back with 32 spans: the request
+> span, one `SELECT` over `Collections`, and then thirty near-identical
+> `SELECT`s against `Quotes`, one per collection returned. No single query is
+> slow -- each runs in roughly 7-12 ms against a local SQLite file -- but
+> thirty of them in sequence is 524 ms of the 524 ms request. `ListByOwnerAsync`
+> loaded the caller's collections, then looped over them fetching each one's
+> quotes in its own round trip, so query count grew linearly with rows: a
+> textbook N+1. Against a networked database each round trip also carries
+> latency, so this degrades exactly as customers add collections. The fix is to
+> gather every quote id first and fetch them in one query.
 
 ## What made it obvious
 
-Not the duration. Fifteen extra queries against a local file database barely
-register in wall-clock time, and no alert would have fired. What gives it away
-is the *shape*: a stack of visually identical spans, same SQL, same table,
-differing only in a parameter. Once seen, that pattern is unmistakable.
+Not the duration on its own. What names the problem is the *shape*: a staircase
+of visually identical spans, same SQL, same table, differing only in a
+parameter. Once seen, that pattern is unmistakable, and the trace attributes it
+to a specific line rather than to "the database being slow".
 
 The confirming evidence is that the count tracks the data. Re-run the seeding
-script with a different number of collections and the span count moves with
-it -- N+1 is precisely that relationship, and demonstrating it changing is
-stronger than any single screenshot.
+script with a different number of collections and the span count moves with it.
+N+1 is precisely that relationship, and demonstrating it move is stronger proof
+than any single screenshot.
 
-This is also why the exercise's alternative -- `Thread.Sleep(1500)` -- would
-have taught less. A sleep appears as an *absence*: a long parent span with
-nothing inside explaining it. That demonstrates a limit of automatic
-instrumentation rather than its value. The N+1 is a failure this codebase
-could plausibly have shipped, and the trace names it precisely.
+This is also why the exercise's alternative -- `Thread.Sleep(1500)` -- teaches
+less. A sleep shows up as an *absence*: a long parent span with nothing inside
+that explains it. That demonstrates a limit of automatic instrumentation rather
+than its value. The N+1 is a failure this codebase could plausibly have
+shipped, and the trace names it precisely.
 
 ## Measured
 
-| | Collections | DB spans in trace | Response time |
-|---|---|---|---|
-| Before | 15 | 16 | _fill in from your run_ |
-| After  | 15 | 1  | _fill in from your run_ |
+Same owner, same data, same machine (SQLite, local Jaeger via OTLP).
+
+| | Collections | Spans in trace | DB spans | Response time |
+|---|---|---|---|---|
+| Before | 30 | 32 | 31 | 523.78 ms (range across five runs: 495 - 811 ms) |
+| After  | 30 | 3  | 2  | see `jaeger-after-fixed.jpg` |
+
+The `Before` row is trace `30f48a3`; the range comes from five consecutive
+requests in the same script run, all 31 DB spans. For reference, trace
+`935a952` shows the same endpoint answering in 11 ms with a single database
+span, before the per-collection loop existed -- the same order of magnitude the
+fix returns to.
+
+![Before -- 32 spans, 523.78 ms](images/jaeger-before-n-plus-1.jpg)
+
+![Before -- each child span is its own SELECT against Quotes](images/jaeger-before-span-detail.jpg)
+
+![One round trip, 11 ms -- the shape the fix restores](images/jaeger-single-query-reference.jpg)
 
 ## The fix
 
 `CollectionRepository.ListByOwnerAsync`, before:
 
 ```csharp
-var collections = await _db.Collections
-    .Where(x => x.OwnerId == ownerId)
-    .ToListAsync(cancellationToken);
-
 foreach (var collection in collections)          // <- one query per collection
 {
-    await _db.Entry(collection)
-        .Collection(x => x.Items)
-        .LoadAsync(cancellationToken);
+    var quoteIds = collection.Items.Select(item => item.QuoteId).ToList();
+
+    var quotes = await _db.Quotes
+        .Where(quote => quoteIds.Contains(quote.Id))
+        .AsNoTracking()
+        .ToListAsync(cancellationToken);
+
+    result.Add(new CollectionWithQuotes(collection.Id, collection.Name, ...));
 }
 ```
 
-after:
+after -- gather every id the caller could need, fetch them once, shape in
+memory:
 
 ```csharp
-return await _db.Collections
-    .Where(x => x.OwnerId == ownerId)
-    .Include(x => x.Items)                       // <- one query, always
-    .AsNoTracking()
-    .ToListAsync(cancellationToken);
+var quoteIds = collections
+    .SelectMany(collection => collection.Items)
+    .Select(item => item.QuoteId)
+    .Distinct()
+    .ToList();
+
+var quotesById = quoteIds.Count == 0
+    ? new Dictionary<int, QuoteSummary>()
+    : await _db.Quotes
+        .Where(quote => quoteIds.Contains(quote.Id))
+        .AsNoTracking()
+        .Select(quote => new QuoteSummary(quote.Id, quote.Author, quote.Text))
+        .ToDictionaryAsync(quote => quote.Id, cancellationToken);
 ```
 
-`AsNoTracking()` is not required to fix the N+1 -- it is worth adding anyway on
-a read-only listing, since the change tracker has no work to do for entities
-nobody is going to modify.
+Two round trips, not one, and that is deliberate. `CollectionItem` is an owned
+type (`OwnsMany`, see `QuotesDbContext`), so `Collections` already arrives with
+its items joined in -- but an item holds only a `QuoteId`, and `Quote` is a
+separate aggregate. Folding the quote lookup into the collections query would
+join across an aggregate boundary and fan the collection rows out by their item
+count. Two constant queries is the honest shape here; what matters is that the
+count no longer depends on N.
+
+Two smaller decisions worth naming:
+
+- `Distinct()` -- the same quote can sit in several collections, and there is
+  no reason to fetch it twice.
+- The empty-list guard -- `Contains` over an empty list still costs a round
+  trip that can never match a row.
+
+`AsNoTracking()` is not part of the N+1 fix. It is worth having on a read-only
+listing anyway, since the change tracker has no work to do for entities nobody
+is going to modify.
 
 ## Keeping it fixed
 
 A trace proves the fix today; it does not stop the next person reintroducing
-it. `CollectionListingQueryCountTests` counts the SQL commands EF actually
-issues and asserts the number does not grow with the row count -- ten
-collections and thirty collections must cost the same number of queries. That
-is the assertion an N+1 breaks and an ordinary correctness test does not:
-every behavioural test in this repository passed against the broken version,
-because the endpoint returned exactly the right data. It just asked sixteen
+it. `CollectionListingQueryCountTests` (in `Quotes.Tests.Unit`) installs an EF
+`DbCommandInterceptor`, lists collections for an owner with 3 collections and
+again with 15, and asserts the command count is *the same number* both times.
+
+It deliberately does not assert an exact count -- that would break the moment
+someone legitimately adds a lookup -- and it does not assert a duration, which
+would be flaky. The property that actually has to hold is that round trips do
+not grow with rows, so that is what is pinned.
+
+The test uses SQLite rather than the InMemory provider on purpose: InMemory is
+not a relational provider, never issues a `DbCommand`, and a command
+interceptor against it would silently count zero and pass forever.
+
+This is the assertion an N+1 breaks and an ordinary correctness test does not.
+Every behavioural test in this repository passed against the broken version,
+because the endpoint returned exactly the right data. It just asked thirty-one
 times.
 
 ## Finding this in production (KQL)
@@ -127,6 +177,6 @@ dependencies
 ```
 
 The second query is the more useful of the two. Sorting by duration finds
-endpoints that are slow *now*; grouping by database calls per request finds
-the ones that will become slow as data grows -- while they are still fast
-enough that nobody has complained.
+endpoints that are slow *now*; grouping by database calls per request finds the
+ones that will become slow as data grows -- while they are still fast enough
+that nobody has complained.
