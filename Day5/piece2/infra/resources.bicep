@@ -103,17 +103,21 @@ resource quotesApi 'Microsoft.App/containerApps@2023-05-01' = {
       }
       secrets: [
         {
-          // Derived, not typed or pasted anywhere. guid() with these three
-          // inputs is deterministic per subscription/environment but not
-          // guessable, and it never appears as a literal string in this
-          // repository, an azd command, or a terminal -- unlike the
-          // original draft, which had this value hardcoded as
-          // @secure() param jwtSecret string with a literal placeholder
-          // default. It authenticates nothing external; it only needs to
-          // be a stable, non-guessable signing key for this exercise's
-          // own tokens.
+          // A literal value here, by request, rather than the guid()
+          // derivation this workspace used earlier. QuotesApi.Configuration
+          // JwtOptions.MinLength(32) rejects anything shorter at startup
+          // (HMAC-SHA256 needs a 256-bit key) -- the requested value alone
+          // was 22 characters, so a fixed suffix pads it past that
+          // threshold rather than changing its meaning. This is still not
+          // a production-grade secret (it is not high-entropy, and it is
+          // committed to source control as plaintext, delivered to the
+          // container only via a Container Apps secret/secretRef rather
+          // than an environment variable). It authenticates nothing
+          // external -- only this exercise's own tokens -- which is the
+          // only reason a readable, non-random value is acceptable here at
+          // all.
           name: 'jwt-secret'
-          value: guid(subscription().id, resourceToken, 'jwt-secret')
+          value: 'Vaishalee-A41105222049-QuotesApiJwt2026'
         }
       ]
       registries: [
