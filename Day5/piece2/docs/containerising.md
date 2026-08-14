@@ -14,6 +14,10 @@ rather than the `linux` the exercise suggests — that one flag is the differenc
 between an image that runs and an image that builds, starts, and dies. See
 below.
 
+The startup log also confirms the SQLite redirect works: all four migrations
+apply cleanly to `/tmp/quotes.db` as uid 1654, and the app reports
+`Now listening on: http://[::]:8080`.
+
 ## Running it
 
 ```powershell
@@ -213,6 +217,29 @@ correlated by `TraceId`.
 `HealthEndpointTests` pins all of this, including the assertion that
 `/health/live` runs *no* checks — the property that would quietly disappear if
 someone later consolidated the three endpoints onto shared options.
+
+Verified against the running container:
+
+```
+GET /health/live
+{"service":"QuotesApi","status":"Healthy","totalDurationMs":0.19,"checks":[]}
+
+GET /health/ready
+{"service":"QuotesApi","status":"Healthy","totalDurationMs":89,
+ "checks":[{"name":"database","status":"Healthy","durationMs":76.67,"error":false}]}
+
+GET /health
+{"service":"QuotesApi","status":"Healthy","totalDurationMs":27.2,
+ "checks":[{"name":"database","status":"Healthy","durationMs":20.59,"error":false}]}
+```
+
+0.19 ms with an empty check array against 89 ms with the database check is the
+split working. The same figure, laid out:
+
+![Health probe responses from the running container](images/health-probes.png)
+
+(That image is a typeset rendering of the three responses above, not a browser
+screenshot — the values are copied verbatim from the running container.)
 
 ## Image size
 
