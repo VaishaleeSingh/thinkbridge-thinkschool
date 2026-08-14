@@ -112,7 +112,7 @@ That hardcodes a tag which must be hand-edited at every framework upgrade, in
 a file nobody thinks to check.
 
 `<ContainerFamily>alpine</ContainerFamily>` asks the SDK for the Alpine
-_variant_ of the base image it has already selected for this project's target
+*variant* of the base image it has already selected for this project's target
 framework, so the tag cannot rot. It does not, on its own, fix the RID problem
 above — that is what `--os linux-musl` is for.
 
@@ -177,7 +177,7 @@ you read past "succeeded".
 
 `OpenTelemetry:OtlpEndpoint` is `http://localhost:4317` in
 `launchSettings.json`, which is correct under `dotnet run` and wrong the moment
-the app is containerised — inside the container, `localhost` _is_ the
+the app is containerised — inside the container, `localhost` *is* the
 container. To reach a Jaeger running on the host:
 
 ```powershell
@@ -194,11 +194,11 @@ docker run --rm -p 8080:8080 `
 Three, not one, because "is this container healthy" is two questions with two
 different consequences.
 
-| Endpoint        | Checks     | A failure means                      |
-| --------------- | ---------- | ------------------------------------ |
-| `/health/live`  | none       | restart the container                |
-| `/health/ready` | database   | stop routing to it, leave it running |
-| `/health`       | everything | what a human curls                   |
+| Endpoint | Checks | A failure means |
+|---|---|---|
+| `/health/live` | none | restart the container |
+| `/health/ready` | database | stop routing to it, leave it running |
+| `/health` | everything | what a human curls |
 
 Keeping the database check out of the liveness probe is the part that matters.
 If a slow database could fail liveness, a database blip would restart every
@@ -215,7 +215,7 @@ excellent way to hand out a connection string. The detail stays in the logs,
 correlated by `TraceId`.
 
 `HealthEndpointTests` pins all of this, including the assertion that
-`/health/live` runs _no_ checks — the property that would quietly disappear if
+`/health/live` runs *no* checks — the property that would quietly disappear if
 someone later consolidated the three endpoints onto shared options.
 
 Verified against the running container:
@@ -237,18 +237,19 @@ GET /health
 split working. The same figure, laid out:
 
 ![Health probe responses from the running container](images/health-probes.png)
-![Port 8080 mapping and health endpoint verification](images/container-port-8080.png)
 
 (That image is a typeset rendering of the three responses above, not a browser
 screenshot — the values are copied verbatim from the running container.)
 
 ## Image size
 
-| Base             | RID              | Disk usage      | Content size    |
-| ---------------- | ---------------- | --------------- | --------------- |
-| Default (Debian) | `linux-x64`      | 367 MB          | 103 MB          |
-| Alpine           | `linux-musl-x64` | 195 MB          | 59.3 MB         |
-|                  |                  | **47% smaller** | **42% smaller** |
+| Base | RID | Disk usage | Content size |
+|---|---|---|---|
+| Default (Debian) | `linux-x64` | 367 MB | 103 MB |
+| Alpine | `linux-musl-x64` | 195 MB | 59.3 MB |
+| | | **47% smaller** | **42% smaller** |
+
+![Container image size, Alpine vs Debian base](images/image-size.png)
 
 Columns as `docker images` reports them: disk usage counts shared base layers,
 content size is this image's own compressed content. The second is the number
