@@ -243,10 +243,14 @@ screenshot — the values are copied verbatim from the running container.)
 
 ## Image size
 
-| Base | RID | Size |
-|---|---|---|
-| Default (Debian) | `linux-x64` | _to measure_ |
-| Alpine | `linux-musl-x64` | _to measure_ |
+| Base | RID | Disk usage | Content size |
+|---|---|---|---|
+| Alpine | `linux-musl-x64` | 195 MB | 59.3 MB |
+| Default (Debian) | `linux-x64` | _to measure_ | _to measure_ |
+
+Columns as `docker images` reports them: disk usage counts shared base layers,
+content size is this image's own compressed content. The second is the number
+that matters for a pull.
 
 ```powershell
 # Debian baseline: glibc base image, glibc RID
