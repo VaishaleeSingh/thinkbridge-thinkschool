@@ -11,6 +11,62 @@
     <UserSecretsId>36bf2d17-1d4d-4872-9b74-d762a143e6b4</UserSecretsId>
   </PropertyGroup>
 
+  <!-- ================================================================
+       Container image (Day 5)
+       ================================================================
+       .NET 8+ builds an OCI image straight from the project, so there is
+       no Dockerfile here and nothing to keep in sync with this file. The
+       publish command and the reasoning behind these properties are in
+       docs/containerising.md.
+
+       Two of these are not what the exercise text suggests.
+
+       ContainerRepository, not ContainerImageName: the property was
+       renamed in .NET 8, and the old name is the deprecated spelling.
+
+       ContainerFamily, not a pinned ContainerBaseImage tag. Pinning
+       "mcr.microsoft.com/dotnet/aspnet:10.0-alpine" hardcodes a tag that
+       must be hand edited at every framework upgrade, in a file nobody
+       thinks to check, and it can silently disagree with the runtime
+       identifier: an x64 Linux publish resolves linux-x64, which is
+       glibc, while Alpine is musl (linux-musl-x64). ContainerFamily
+       instead asks the SDK for the Alpine variant of the base image it
+       has already chosen to match this project's TFM and RID, so the two
+       cannot drift apart.
+  -->
+  <PropertyGroup>
+    <ContainerRepository>quotes-api</ContainerRepository>
+    <ContainerFamily>alpine</ContainerFamily>
+
+    <!-- The image tag follows this. ContainerImageTag defaults to
+         $(Version), so setting both would create two places to bump a
+         version number and one of them would eventually be forgotten. -->
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The ASP.NET base images already set ASPNETCORE_HTTP_PORTS=8080 and
+         the SDK infers the exposed port from it. Stating it explicitly
+         costs nothing and means `docker inspect` documents the contract
+         rather than leaving a reader to know that default. -->
+    <ContainerPort Include="8080" Type="tcp" />
+
+    <!-- SQLite writes next to the working directory by default
+         ("Data Source=quotes.db"), and PublishContainer runs the app as a
+         non-root user that does not own /app, so the migration on startup
+         would fail on a read only path. /tmp is writable by any user in
+         the base image.
+
+         This is a deliberately temporary home. A file database inside a
+         container is the wrong shape regardless of where it is put: the
+         data dies with the container, and two replicas do not share it.
+         The repository already has the answer for anything real, in the
+         SQL Server provider and migrations under
+         QuotesApi.Migrations.SqlServer. See docs/containerising.md. -->
+    <ContainerEnvironmentVariable Include="ConnectionStrings__DefaultConnection"
+                                  Value="Data Source=/tmp/quotes.db" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Azure.Extensions.AspNetCore.Configuration.Secrets" Version="1.5.1" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
@@ -20,6 +76,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.10" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />

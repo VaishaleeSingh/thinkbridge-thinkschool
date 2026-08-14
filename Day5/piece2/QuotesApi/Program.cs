@@ -88,6 +88,11 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // actually configured.
 builder.Services.AddObservability(builder.Configuration);
 
+// Liveness and readiness checks. Split deliberately -- see
+// HealthCheckExtensions.cs for why a database check must not be allowed to
+// fail a liveness probe.
+builder.Services.AddQuotesHealthChecks();
+
 var app = builder.Build();
 
 // Stamps every log line written during a request with that request's
@@ -128,6 +133,12 @@ app.UseAuthorization();
 // /api/auth/* is intentionally mapped without any auth requirement of its
 // own -- these are the endpoints that HAND OUT tokens in the first place.
 app.MapAuthEndpoints();
+
+// Health endpoints are mapped without any authorization requirement: an
+// orchestrator probing a container has no token to present, and a probe
+// that can fail for authentication reasons is worse than no probe. The
+// response body is deliberately free of anything sensitive.
+app.MapQuotesHealthChecks();
 
 app.MapQuoteEndpoints();
 app.MapCollectionEndpoints();
