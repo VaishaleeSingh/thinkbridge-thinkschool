@@ -154,6 +154,12 @@ public static class InfrastructureExtensions
                 options.Authority = azureAd.Authority;
                 options.Audience = azureAd.Audience;
 
+                // The Backchannel this handler uses to fetch Entra's
+                // metadata and signing keys is assigned below, after the
+                // authentication builder, because it needs
+                // IHttpClientFactory and this delegate has no service
+                // provider to resolve it from.
+
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -183,6 +189,36 @@ public static class InfrastructureExtensions
                 // here anymore.
                 options.ForwardDefaultSelector = httpContext =>
                     AuthSchemeSelector.Select(httpContext.Request.Headers["Authorization"].FirstOrDefault());
+            });
+
+        // --- Resilience for the one outbound HTTP call this API makes ---
+        //
+        // The "EntraId" scheme above talks to login.microsoftonline.com to
+        // fetch the OIDC metadata document and signing keys it validates
+        // tokens against. Left alone, ASP.NET Core builds a bare HttpClient
+        // for that: no retry, no circuit breaker, one 60 second timeout.
+        // A momentary blip there turns into failed authentication for every
+        // Entra-issued token in flight.
+        //
+        // AddResilientHttpClients registers a named client wrapped in a
+        // Polly pipeline (see ResilienceExtensions for the strategy order
+        // and why each number is what it is); this Configure call is what
+        // actually hands that client to the handler. It is written as a
+        // post-configure step rather than inline in AddJwtBearer above
+        // because IHttpClientFactory has to be resolved from the container,
+        // and the AddJwtBearer delegate has no access to it.
+        //
+        // Named options, not the unnamed default: JwtBearerOptions is
+        // registered per scheme, and configuring the unnamed instance would
+        // silently do nothing to the "EntraId" scheme.
+        services.AddResilientHttpClients();
+
+        services
+            .AddOptions<JwtBearerOptions>("EntraId")
+            .Configure<IHttpClientFactory>((options, httpClientFactory) =>
+            {
+                options.Backchannel = httpClientFactory.CreateClient(
+                    ResilienceExtensions.EntraIdClientName);
             });
 
         // ------------------------------------------------------------
