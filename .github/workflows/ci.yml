@@ -94,7 +94,7 @@ jobs:
       # found" rather than a real coverage problem, that tag is why.
       - name: Merge coverage reports
         if: always()
-        uses: danielpalme/ReportGenerator-GitHub-Action@5
+        uses: danielpalme/ReportGenerator-GitHub-Action@v5
         with:
           reports: 'Day5/piece2/TestResults/**/coverage.cobertura.xml'
           targetdir: 'Day5/piece2/CoverageReport'
