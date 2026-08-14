@@ -1,0 +1,38 @@
+  Determining projects to restore...
+C:\thinkschool\Day5\piece2\QuotesApi\QuotesApi.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [C:\thinkschool\Day5\piece2\QuotesApi.slnx]
+C:\thinkschool\Day5\piece2\Quotes.Tests.Unit\Quotes.Tests.Unit.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [C:\thinkschool\Day5\piece2\QuotesApi.slnx]
+C:\thinkschool\Day5\piece2\QuotesApi.Tests\QuotesApi.Tests.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [C:\thinkschool\Day5\piece2\QuotesApi.slnx]
+C:\thinkschool\Day5\piece2\Quotes.Tests.Integration\Quotes.Tests.Integration.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [C:\thinkschool\Day5\piece2\QuotesApi.slnx]
+C:\thinkschool\Day5\piece2\QuotesApi.Migrations.SqlServer\QuotesApi.Migrations.SqlServer.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [C:\thinkschool\Day5\piece2\QuotesApi.slnx]
+C:\thinkschool\Day5\piece2\Quotes.Tests.Integration.SqlServer\Quotes.Tests.Integration.SqlServer.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [C:\thinkschool\Day5\piece2\QuotesApi.slnx]
+C:\thinkschool\Day5\piece2\Quotes.Tests.Integration.SqlServer\Quotes.Tests.Integration.SqlServer.csproj : warning NU1903: Package 'SSH.NET' 2024.1.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-q939-rpr3-3284 [C:\thinkschool\Day5\piece2\QuotesApi.slnx]
+  All projects are up-to-date for restore.
+C:\thinkschool\Day5\piece2\QuotesApi.Tests\QuotesApi.Tests.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q
+C:\thinkschool\Day5\piece2\Quotes.Tests.Unit\Quotes.Tests.Unit.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q
+C:\thinkschool\Day5\piece2\Quotes.Tests.Integration\Quotes.Tests.Integration.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q
+C:\thinkschool\Day5\piece2\QuotesApi\QuotesApi.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q
+C:\thinkschool\Day5\piece2\Quotes.Tests.Integration.SqlServer\Quotes.Tests.Integration.SqlServer.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q
+C:\thinkschool\Day5\piece2\Quotes.Tests.Integration.SqlServer\Quotes.Tests.Integration.SqlServer.csproj : warning NU1903: Package 'SSH.NET' 2024.1.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-q939-rpr3-3284
+C:\thinkschool\Day5\piece2\QuotesApi.Migrations.SqlServer\QuotesApi.Migrations.SqlServer.csproj : warning NU1903: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q
+  QuotesApi -> C:\thinkschool\Day5\piece2\QuotesApi\bin\Debug\net10.0\QuotesApi.dll
+  QuotesApi.Migrations.SqlServer -> C:\thinkschool\Day5\piece2\QuotesApi.Migrations.SqlServer\bin\Debug\net10.0\QuotesApi.Migrations.SqlServer.dll
+  Quotes.Tests.Unit -> C:\thinkschool\Day5\piece2\Quotes.Tests.Unit\bin\Debug\net10.0\Quotes.Tests.Unit.dll
+Test run for C:\thinkschool\Day5\piece2\Quotes.Tests.Unit\bin\Debug\net10.0\Quotes.Tests.Unit.dll (.NETCoreApp,Version=v10.0)
+  QuotesApi.Tests -> C:\thinkschool\Day5\piece2\QuotesApi.Tests\bin\Debug\net10.0\QuotesApi.Tests.dll
+Test run for C:\thinkschool\Day5\piece2\QuotesApi.Tests\bin\Debug\net10.0\QuotesApi.Tests.dll (.NETCoreApp,Version=v10.0)
+  Quotes.Tests.Integration -> C:\thinkschool\Day5\piece2\Quotes.Tests.Integration\bin\Debug\net10.0\Quotes.Tests.Integration.dll
+Test run for C:\thinkschool\Day5\piece2\Quotes.Tests.Integration\bin\Debug\net10.0\Quotes.Tests.Integration.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+  Quotes.Tests.Integration.SqlServer -> C:\thinkschool\Day5\piece2\Quotes.Tests.Integration.SqlServer\bin\Debug\net10.0\Quotes.Tests.Integration.SqlServer.dll
+A total of 1 test files matched the specified pattern.
+Test run for C:\thinkschool\Day5\piece2\Quotes.Tests.Integration.SqlServer\bin\Debug\net10.0\Quotes.Tests.Integration.SqlServer.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    88, Skipped:     0, Total:    88, Duration: 1 s - Quotes.Tests.Unit.dll (net10.0)
+
+Passed!  - Failed:     0, Passed:    27, Skipped:     0, Total:    27, Duration: 3 s - Quotes.Tests.Integration.dll (net10.0)
+
+Passed!  - Failed:     0, Passed:    23, Skipped:     0, Total:    23, Duration: 4 s - QuotesApi.Tests.dll (net10.0)
+
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 3 s - Quotes.Tests.Integration.SqlServer.dll (net10.0)

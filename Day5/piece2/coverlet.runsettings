@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <!--
+            Coverlet instruments every assembly loaded during a test run by
+            default: without this filter, the "70% coverage" gate would
+            include the four test projects and the QuotesApi.Migrations.SqlServer
+            design-time factory, none of which anyone writes tests for on
+            purpose, which would silently inflate or deflate the number
+            depending on how much test/glue code happens to run. Include
+            restricts coverage to QuotesApi's own assembly; Exclude is
+            belt-and-suspenders in case QuotesApi ever gains a first-party
+            dependency that Include alone wouldn't catch.
+          -->
+          <Include>[QuotesApi]*</Include>
+          <Exclude>[QuotesApi.Tests]*,[Quotes.Tests.Unit]*,[Quotes.Tests.Integration]*,[Quotes.Tests.Integration.SqlServer]*,[QuotesApi.Migrations.SqlServer]*</Exclude>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

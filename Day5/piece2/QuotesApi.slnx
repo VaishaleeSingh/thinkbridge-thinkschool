@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="QuotesApi/QuotesApi.csproj" />
+  <Project Path="QuotesApi.Tests/QuotesApi.Tests.csproj" />
+  <Project Path="Quotes.Tests.Unit/Quotes.Tests.Unit.csproj" />
+  <Project Path="Quotes.Tests.Integration/Quotes.Tests.Integration.csproj" />
+  <Project Path="Quotes.Tests.Integration.SqlServer/Quotes.Tests.Integration.SqlServer.csproj" />
+  <Project Path="QuotesApi.Migrations.SqlServer/QuotesApi.Migrations.SqlServer.csproj" />
+</Solution>
