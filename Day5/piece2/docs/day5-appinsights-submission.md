@@ -76,6 +76,56 @@ $base = "https://quotes-api-cowork.whitestone-71ebd55e.centralindia.azurecontain
 
 Telemetry takes roughly **1–3 minutes** to become queryable. An empty result immediately after the curls is ingestion latency, not a broken pipeline.
 
+### Alternative: create the resources by hand, without re-running `azd up`
+
+Equivalent to what the Bicep does, for when a full reprovision is not wanted. These resources sit **outside** the Bicep, so the next `azd up` creates its own pair and repoints the app at those.
+
+```powershell
+az monitor log-analytics workspace create -g thinkschool-azd-rg -n log-quotes-api -l centralindia
+$wsId = az monitor log-analytics workspace show -g thinkschool-azd-rg -n log-quotes-api --query id -o tsv
+az monitor app-insights component create -g thinkschool-azd-rg -a appi-quotes-api -l centralindia --workspace $wsId
+
+$cs = az monitor app-insights component show -g thinkschool-azd-rg -a appi-quotes-api --query connectionString -o tsv
+az containerapp update -n quotes-api-cowork -g thinkschool-azd-rg `
+  --set-env-vars "ApplicationInsights__ConnectionString=$cs" "APPLICATIONINSIGHTS_CONNECTION_STRING=$cs"
+```
+
+`--set-env-vars` merges rather than replaces, so `Jwt__*` and `ASPNETCORE_ENVIRONMENT` survive. The update creates a new revision; that restart is what makes the app read the variable and switch telemetry on.
+
+---
+
+## Where to run the query
+
+### In the portal
+
+1. **portal.azure.com** → search the resource name (`appi-quotes-api…`) → open the Application Insights resource. It is in resource group `thinkschool-azd-rg`.
+2. Left menu → **Monitoring** → **Logs**. Dismiss the "Queries" sample dialog that opens on top.
+3. Paste the query into the editor and press **Run**.
+4. The time-range control above the editor must read **"Set in query"**. If it is set to a range (e.g. "Last 24 hours"), that range ANDs with the `ago(30m)` filter, and a narrower portal range silently overrides the query's own window.
+
+### From the CLI, no portal
+
+```powershell
+az extension add -n application-insights
+$appId = az monitor app-insights component show -g thinkschool-azd-rg -a appi-quotes-api --query appId -o tsv
+
+az monitor app-insights query --app $appId --analytics-query `
+  "requests | where timestamp > ago(30m) | summarize count(), p50=percentile(duration,50), p99=percentile(duration,99) by name | order by p99 desc" `
+  -o table
+```
+
+### If the result is empty
+
+In the order worth checking, because each has a different fix:
+
+| Cause | How to tell | Fix |
+| --- | --- | --- |
+| Ingestion latency | Fewer than ~3 minutes since the traffic | Wait, re-run |
+| App never got the variable | `az containerapp show -n quotes-api-cowork -g thinkschool-azd-rg --query "properties.template.containers[0].env[].name"` does not list `ApplicationInsights__ConnectionString` | Re-apply the env var; check the active revision is the new one |
+| Variable set on an old revision | `az containerapp revision list -n quotes-api-cowork -g thinkschool-azd-rg -o table` shows traffic on an earlier revision | Route traffic to the latest revision |
+| Portal time range narrower than the query | Time picker is not "Set in query" | Set it to "Set in query" |
+| Querying the wrong resource | Two components exist (a hand-made one and the Bicep's `appi-quotes-api-<token>`) | Query the one whose connection string is on the running revision |
+
 ---
 
 ## The query
