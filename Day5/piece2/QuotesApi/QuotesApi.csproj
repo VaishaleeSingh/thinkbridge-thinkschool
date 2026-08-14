@@ -41,7 +41,9 @@
   -->
   <PropertyGroup>
     <ContainerRepository>quotes-api</ContainerRepository>
+    <ContainerImageName>quotes-api</ContainerImageName>
     <ContainerFamily>alpine</ContainerFamily>
+    <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:10.0-alpine</ContainerBaseImage>
 
     <!-- Both, deliberately. The documentation says ContainerImageTag
          falls back to $(Version), so this file first set Version alone on

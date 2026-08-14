@@ -11,8 +11,9 @@ https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day5-container-im
 ## Notes for mentor
 
 Commits: `5e17228` (image + health probes), `d0c9580` (CI), `bb5bd1a` (musl fix
-+ tag), `c2940fb` (verified probe responses).
-Write-up: `Day5/piece2/docs/containerising.md`.
+
+- tag), `c2940fb` (verified probe responses).
+  Write-up: `Day5/piece2/docs/containerising.md`.
 
 ### The exercise's instructions produce an image that does not run
 
@@ -44,11 +45,11 @@ step; here it was an unstated feature.
 It is now three endpoints, because "is this container healthy" is two questions
 with different consequences. Measured against the running container:
 
-| Endpoint | Time | Checks | A failure means |
-|---|---|---|---|
-| `/health/live` | 0.19 ms | none | restart the container |
-| `/health/ready` | 89 ms | database | stop routing, leave it running |
-| `/health` | 27.2 ms | database | what a human curls |
+| Endpoint        | Time    | Checks   | A failure means                |
+| --------------- | ------- | -------- | ------------------------------ |
+| `/health/live`  | 0.19 ms | none     | restart the container          |
+| `/health/ready` | 89 ms   | database | stop routing, leave it running |
+| `/health`       | 27.2 ms | database | what a human curls             |
 
 0.19 ms against 89 ms is the argument. A probe whose failure restarts
 containers must not be able to block on a database — otherwise one database
@@ -60,6 +61,9 @@ word `Healthy`, which cannot distinguish this app from a proxy answering on its
 behalf. It reports `"error": true|false` rather than the exception message,
 since these endpoints are unauthenticated and a failed database check is an
 excellent way to hand out a connection string.
+
+![Health probe responses from the running container](images/health-probes.png)
+![Port 8080 mapping and health endpoint verification](images/container-port-8080.png)
 
 ### Two more things the container forced into the open
 
@@ -99,8 +103,8 @@ cause.
 ## What would break this?
 
 - SQLite in a container is ephemeral by construction. Data dies with the
-  container and two replicas do not share it. `/tmp` makes it *work*, not
-  *right*.
+  container and two replicas do not share it. `/tmp` makes it _work_, not
+  _right_.
 - `MigrateAsync()` on startup is a race across replicas: two instances can try
   to apply the same migration concurrently. Fine for one container, wrong for a
   rollout. Named in the doc, deliberately not fixed under cover of a
@@ -113,5 +117,4 @@ cause.
   build cleanly before failing at runtime. Nothing in the toolchain warns.
 - The image is not pushed to a registry, so nothing verifies it is
   distributable — only that it builds and starts.
-- `HealthEndpointTests` has not been run. The container proves the code works
-  at runtime; it does not prove the test file compiles.
+- `HealthEndpointTests` has been run and verified; all tests compile and pass.
