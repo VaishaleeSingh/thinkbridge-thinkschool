@@ -1,0 +1,7 @@
+# Normalise line endings: LF in the repository, native in the working tree.
+# Without this, working from Windows makes every file look fully modified.
+* text=auto
+
+*.jpg binary
+*.png binary
+*.gif binary

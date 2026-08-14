@@ -10,7 +10,7 @@ name: ci
 # This replaces the old dotnet-tests.yml from Day 3: that workflow
 # repeated the same restore/build/test steps once per .csproj because
 # there was no solution file to point a single `dotnet test` at. Day 4
-# adds Day4/piece2/QuotesApi.slnx for exactly that reason, so this
+# adds Day5/piece2/QuotesApi.slnx for exactly that reason, so this
 # workflow can restore/build/test everything -- QuotesApi itself plus all
 # four test projects -- in one pass instead of four copy-pasted ones.
 on:
@@ -34,10 +34,10 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore Day4/piece2/QuotesApi.slnx
+        run: dotnet restore Day5/piece2/QuotesApi.slnx
 
       - name: Build
-        run: dotnet build Day4/piece2/QuotesApi.slnx --no-restore --configuration Release
+        run: dotnet build Day5/piece2/QuotesApi.slnx --no-restore --configuration Release
 
       # trx gives a structured, per-test pass/fail record (viewable in
       # most .NET-aware tools); the coverage collector is Coverlet's
@@ -54,13 +54,13 @@ jobs:
       # each project's run gets its own default (unique) filename instead.
       - name: Test
         run: >
-          dotnet test Day4/piece2/QuotesApi.slnx
+          dotnet test Day5/piece2/QuotesApi.slnx
           --no-build
           --configuration Release
           --logger trx
           --collect:"XPlat Code Coverage"
-          --settings Day4/piece2/coverlet.runsettings
-          --results-directory Day4/piece2/TestResults
+          --settings Day5/piece2/coverlet.runsettings
+          --results-directory Day5/piece2/TestResults
 
       # if: always() on every step from here down: if a test genuinely
       # fails, the Test step above already fails the job (that's the "any
@@ -72,7 +72,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: Day4/piece2/TestResults/**/*.trx
+          path: Day5/piece2/TestResults/**/*.trx
           if-no-files-found: error
 
       - name: Upload raw coverage reports
@@ -80,7 +80,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-reports-raw
-          path: Day4/piece2/TestResults/**/coverage.cobertura.xml
+          path: Day5/piece2/TestResults/**/coverage.cobertura.xml
           if-no-files-found: error
 
       # Five test projects means five separate Cobertura files (one per
@@ -96,8 +96,8 @@ jobs:
         if: always()
         uses: danielpalme/ReportGenerator-GitHub-Action@5
         with:
-          reports: 'Day4/piece2/TestResults/**/coverage.cobertura.xml'
-          targetdir: 'Day4/piece2/CoverageReport'
+          reports: 'Day5/piece2/TestResults/**/coverage.cobertura.xml'
+          targetdir: 'Day5/piece2/CoverageReport'
           reporttypes: 'Cobertura;MarkdownSummaryGithub'
 
       - name: Upload merged coverage report
@@ -105,11 +105,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report-merged
-          path: Day4/piece2/CoverageReport
+          path: Day5/piece2/CoverageReport
 
       - name: Post coverage summary
         if: always()
-        run: cat Day4/piece2/CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY" || true
+        run: cat Day5/piece2/CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY" || true
 
       # The actual 70% gate. Deliberately not a second third-party action
       # here -- Cobertura's line-rate attribute is a stable, documented
@@ -126,7 +126,7 @@ jobs:
           import xml.etree.ElementTree as ET
 
           THRESHOLD = 70.0
-          path = "Day4/piece2/CoverageReport/Cobertura.xml"
+          path = "Day5/piece2/CoverageReport/Cobertura.xml"
 
           root = ET.parse(path).getroot()
           percent = float(root.attrib["line-rate"]) * 100

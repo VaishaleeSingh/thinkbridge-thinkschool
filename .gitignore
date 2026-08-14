@@ -10,3 +10,7 @@ obj/
 _staging/
 TestResults/
 CoverageReport/
+
+# local scratch
+_to_delete/
+*.log
