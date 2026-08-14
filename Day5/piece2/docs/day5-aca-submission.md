@@ -8,15 +8,22 @@ https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day5-azure-contai
 
 ---
 
-## Live Azure Provisioning Output
+## Live Azure Provisioning Verification
 
 ```text
 Resource Group: thinkschool-rg (centralindia)
 Container App Env: thinkschool-env (Succeeded)
 Container App: quotes-api (Active & Healthy)
-FQDN: https://quotes-api.whitestone-773df016.centralindia.azurecontainerapps.io
+FQDN: https://quotes-api.whitestone-71ebd55e.centralindia.azurecontainerapps.io
 Revision: quotes-api--u33mos7d (Active: True, HealthState: Healthy)
 ```
+
+### Verification Screenshots
+
+![Resource Group overview showing thinkschool-rg, thinkschool-env, and quotes-api](images/aca-resource-group.png)
+![Container Apps Environment overview for thinkschool-env](images/aca-environment.png)
+![Container App overview for quotes-api](images/aca-app-overview.png)
+![Live container app responding at quotes-api.whitestone-71ebd55e.centralindia.azurecontainerapps.io](images/aca-live-app.png)
 
 ## Notes for Mentor
 
