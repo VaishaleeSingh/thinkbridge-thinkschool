@@ -190,3 +190,43 @@ an already-computed row.
   added to both the CTE's `GROUP BY` and the join-back the moment one
   exists — easy to forget in only one of the two places, which would make
   the count and the "most recent" row disagree with each other.
+
+## Now verified on a real SQL Server
+
+The "recommended before merging" step above has been done, so the caveat it
+raises no longer stands for the required query.
+
+An Azure SQL Database (`quotesdb` on `thinkschool-quotes-sql`, Central
+India, in `thinkschool-rg`) was provisioned with **Microsoft Entra-only
+authentication** — no SQL admin password exists on that server at all. The
+schema this exercise needs (`dbo.Users`, `dbo.Quotes`, `dbo.Collections`)
+was created there and seeded with exactly the rows in
+`00-seed-sample-data.sql`; the sanity check that file suggests returned
+`QuoteCount = 13, AuthorCount = 6`, as expected.
+
+`01-author-quote-summary.sql` was then run as written, through the portal's
+Query editor. The T-SQL parses and executes unchanged, and the result is
+**identical to the SQLite capture above** — same 6 rows, same
+`QuoteCount` values, same `MostRecentQuoteId` values, same order:
+
+![01-author-quote-summary.sql running against Azure SQL Database, returning the same 6 rows as the SQLite capture](images/day7-01-author-quote-summary-sqlserver.jpg)
+
+Scope of this verification, stated precisely rather than left to be assumed:
+
+- **`01-author-quote-summary.sql` — run on SQL Server.** Non-recursive CTE,
+  `GROUP BY` with `MAX(Id)`, and the join back all behave as documented.
+- **`02-join-practice.sql` and `03-recursive-cte-practice.sql` — not yet run
+  there.** Their SQLite verification above still stands on its own terms;
+  the T-SQL-specific syntax in them (`TRY_CAST`, `OPTION (MAXRECURSION 100)`,
+  `SYSUTCDATETIME()`) remains unproven against SQL Server.
+
+The database this was run against:
+
+![The Azure SQL Database created for this verification](images/day7-00-azure-sql-provisioning.jpg)
+
+One thing worth recording about the environment: the Azure portal's Query
+editor does **not** surface `SET STATISTICS IO ON` output — it reports
+affected row counts and errors, but the informational messages that carry
+logical-read counts never reach it. That does not affect this task, which is
+about result rows, but it does matter for the Day 8 index exercises, whose
+whole point is those numbers.
