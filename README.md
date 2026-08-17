@@ -73,6 +73,14 @@ recency-proxy stand-in this uses instead, states it as an explicit
 assumption rather than a silent one, and captures real output the queries
 were verified against.
 
+A second Day 7 exercise, `04-window-functions.sql`, covers `ROW_NUMBER`,
+`RANK`/`DENSE_RANK`, `LAG`/`LEAD`, and a running total with `SUM() OVER
+(ORDER BY ...)` against the same schema and seed data — including a direct
+rewrite of `01-author-quote-summary.sql` with `ROW_NUMBER`, verified to
+return identical output, to make the "aggregate collapses rows, a window
+function decorates them" difference concrete rather than asserted. Details
+in `Day7/piece2/docs/day7-window-functions-submission.md`.
+
 ## Running it
 
 Prerequisites: .NET 10 SDK. Docker is needed only for the SQL Server
