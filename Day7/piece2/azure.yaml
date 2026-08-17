@@ -1,0 +1,6 @@
+name: quotes-api
+services:
+  quotes-api:
+    project: ./QuotesApi/QuotesApi.csproj
+    language: dotnet
+    host: containerapp
