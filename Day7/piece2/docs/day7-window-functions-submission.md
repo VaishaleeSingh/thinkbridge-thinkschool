@@ -222,3 +222,50 @@ function never collapsed the row that text lived on in the first place.
   seed data's tie happens to sit at one extreme. That's exactly why this
   submission explains the `ASC` choice rather than leaving it to look
   arbitrary.
+
+## Now verified on a real SQL Server
+
+The "recommended before merging" step above has been done for three of the
+four queries in `04-window-functions.sql`.
+
+An Azure SQL Database (`quotesdb` on `thinkschool-quotes-sql`, Central
+India, in `thinkschool-rg`, Microsoft Entra-only authentication) was
+provisioned and seeded with exactly the rows in `00-seed-sample-data.sql`
+(`QuoteCount = 13, AuthorCount = 6`). Each query below was then run as
+written through the portal's Query editor. All of them parse and execute
+unchanged — including the explicit `ROWS BETWEEN UNBOUNDED PRECEDING AND
+CURRENT ROW` frame clause, which was the specific piece of T-SQL syntax
+flagged above as unproven.
+
+### 1. `ROW_NUMBER` — identical output to the joins/CTE query, on SQL Server too
+
+Same 6 rows, same `QuoteCount`, same `MostRecentQuoteId`, same order as
+`01-author-quote-summary.sql` produced on the same database. The equality
+this submission claimed from SQLite now holds on the engine the queries were
+actually written for:
+
+![ROW_NUMBER rewrite running on Azure SQL Database, returning the same 6 rows as the GROUP BY CTE version](images/day7-04-row-number-sqlserver.jpg)
+
+### 2. `RANK` vs `DENSE_RANK` — the divergence reproduces exactly
+
+Every value in the table above is reproduced, including the one the `ASC`
+ordering was chosen to expose: **Maya Angelou is `RANK` 4 and `DENSE_RANK`
+2**, after the three-way tie at 1 quote.
+
+![RANK vs DENSE_RANK on Azure SQL Database: three tied authors at rank 1, then RANK jumps to 4 while DENSE_RANK goes to 2](images/day7-04-rank-vs-dense-rank-sqlserver.jpg)
+
+### 4. Running total — the `PARTITION BY` reset reproduces
+
+13 rows, `RunningTotalAllQuotes` climbing monotonically, and
+`RunningTotalForThisAuthor` resetting to 1 exactly where `Author` changes —
+visible at `Id = 6`, Marcus Aurelius's 5 giving way to Maya Angelou's 1:
+
+![Running total on Azure SQL Database: global running total climbing while the per-author total resets to 1 at Id 6](images/day7-04-running-total-sqlserver.jpg)
+
+### What was not run there
+
+**Query 3 (`LAG`/`LEAD`) was not run on SQL Server.** Its SQLite
+verification above stands on its own terms and nothing about it is in
+doubt — `LAG`/`LEAD` are not syntactically unusual here — but it is listed
+separately rather than folded into a blanket "verified on SQL Server" claim
+that would cover a query nobody actually executed there.
