@@ -103,9 +103,16 @@ syntax (`TRY_CAST`, `OPTION (MAXRECURSION ...)`, `SYSUTCDATETIME()`) parses
 and runs exactly as written — the dialect was hand-verified against SQL
 Server documentation, not executed on SQL Server itself.
 
-**Captured output** (SQLite execution, same data as `00-seed-sample-data.sql`):
+**Captured output** (SQLite execution, same data as `00-seed-sample-data.sql`).
+These are real terminal captures of a script that loads the seed data and
+runs each `.sql` file's queries against it — not SSMS/Azure Data Studio
+screenshots, because this environment has no path to a real SQL Server (see
+above) — labelled plainly as SQLite output rather than presented as if they
+came from SQL Server.
 
 Required query (`01-author-quote-summary.sql`):
+
+![Required CTE query output — 6 authors, each with quote count and most-recent quote, cross-checked against a manual MAX(Id)/COUNT(*) GROUP BY](images/day7-01-author-quote-summary.png)
 
 | Author | QuoteCount | MostRecentQuoteId | MostRecentQuoteText |
 |---|---|---|---|
@@ -118,10 +125,12 @@ Required query (`01-author-quote-summary.sql`):
 
 Cross-checked against a manual `SELECT Author, MAX(Id), COUNT(*) FROM Quotes
 GROUP BY Author` — every `(QuoteCount, MostRecentQuoteId)` pair matches
-exactly.
+exactly (`MATCH: True` in the capture above).
 
 Join practice (`02-join-practice.sql`), against 13 seeded quotes (10 with a
 resolvable `CreatedByUserId`, 3 with `NULL`):
+
+![Join practice output — INNER JOIN returns 10 rows, LEFT JOIN returns all 13 with 3 unmatched, CROSS JOIN returns 12 (2 collections x 6 authors)](images/day7-02-join-practice.png)
 
 | Query | Row count | Notes |
 |---|---|---|
@@ -129,11 +138,14 @@ resolvable `CreatedByUserId`, 3 with `NULL`):
 | LEFT JOIN → Users | 13 | All 13 present; `CreatedByEmail` is `NULL` on exactly the same 3 rows the INNER JOIN dropped. |
 | CROSS JOIN Collections × distinct Authors | 12 | 2 collections × 6 distinct authors, no `ON` clause — every combination present by definition. |
 
-Recursive CTE (`03-recursive-cte-practice.sql`): the number sequence
-returned `1` through `10` inclusive; the date series returned all 31 days
-of August 2026 inclusive. Both terminated on their own `WHERE` guard —
-neither needed the `MAXRECURSION` cap to kick in, which is the point of
-having the guard in the first place.
+Recursive CTE (`03-recursive-cte-practice.sql`):
+
+![Recursive CTE output — number sequence 1 through 10, and a 31-row August 2026 date series, both terminating on their own WHERE guard](images/day7-03-recursive-cte.png)
+
+The number sequence returned `1` through `10` inclusive; the date series
+returned all 31 days of August 2026 inclusive. Both terminated on their own
+`WHERE` guard — neither needed the `MAXRECURSION` cap to kick in, which is
+the point of having the guard in the first place.
 
 ## What did you learn this session?
 
