@@ -58,6 +58,21 @@ mismatch) and how each was actually fixed and verified against the live
 endpoint; the verified results are in
 `Day5/piece2/docs/day5-azd-submission.md`.
 
+**Day 7 — joins and CTEs at depth.** Day 6 was skipped, so `Day7/piece2` is
+`Day5/piece2` carried forward unchanged (verified byte-identical) with one
+addition: `Day7/piece2/docs/sql/`, a set of T-SQL scripts written and run
+against this app's own schema (the "Week-1 Quotes DB") rather than a
+throwaway example table. `01-author-quote-summary.sql` is the required
+exercise — each author with their quote count and most-recent quote, in one
+statement, via a non-recursive CTE rather than a correlated subquery.
+`02-join-practice.sql` and `03-recursive-cte-practice.sql` round out inner /
+left / cross join and recursive-CTE fluency. `Quotes` has no timestamp
+column to order "most recent" by (Day 6 would plausibly have added one) —
+`Day7/piece2/docs/day7-joins-and-ctes-submission.md` explains the `Id`-as-
+recency-proxy stand-in this uses instead, states it as an explicit
+assumption rather than a silent one, and captures real output the queries
+were verified against.
+
 ## Running it
 
 Prerequisites: .NET 10 SDK. Docker is needed only for the SQL Server

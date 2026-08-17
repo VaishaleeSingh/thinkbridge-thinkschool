@@ -1,0 +1,31 @@
+// Endpoint latency by operation name.
+//
+// Saved in the workspace as the function EndpointLatency(window) -- see
+// docs/day5-appinsights-submission.md for the save steps. The parameter is
+// the only change from the exercise's query text: a hardcoded ago(30m)
+// makes a function that can only ever answer one question, and the whole
+// point of saving it is to re-use it over a different window later.
+//
+// duration is in MILLISECONDS in the requests table.
+//
+// count() rather than sum(itemCount) is correct only while sampling is off
+// (the Azure Monitor distro defaults to SamplingRatio 1.0, and nothing in
+// this app changes it). If sampling is ever enabled, count() reports the
+// number of records STORED, not the number of requests that happened, and
+// every number in this table silently under-reports.
+requests
+| where timestamp > ago(window)
+| summarize count(), p50=percentile(duration, 50), p99=percentile(duration, 99) by name
+| order by p99 desc
+
+// Same query, excluding the Container Apps health probes. The liveness and
+// readiness probes run every 10 seconds against /health/live and
+// /health/ready (infra/resources.bicep), so on a low-traffic app they are
+// the overwhelming majority of rows and bury the endpoints actually being
+// measured. Useful as a second saved function, or inline:
+//
+// requests
+// | where timestamp > ago(window)
+// | where name !startswith "GET /health"
+// | summarize count(), p50=percentile(duration, 50), p99=percentile(duration, 99) by name
+// | order by p99 desc
