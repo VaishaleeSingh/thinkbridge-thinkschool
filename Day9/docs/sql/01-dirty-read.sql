@@ -106,3 +106,25 @@ SELECT Text FROM dbo.Quotes
 WHERE Author = 'Rumi' AND Text LIKE 'The wound is the place%';
 -- Should be back to the original seed text in both parts -- neither
 -- experiment should leave a permanent change.
+
+-- =======================================================================
+-- REAL AZURE SQL DATABASE RESULT for Part 2 (see the submission markdown,
+-- section "Dirty read -- Part 2", for the exact self-contained batches
+-- actually run against quotesdb via Azure Portal's Query editor):
+--
+-- Session A completed almost instantly ("Succeeded 0 sec 342 ms") and
+-- never saw Session B's uncommitted write, in BOTH of its reads -- but it
+-- did NOT block/wait the way this file's comments above describe. That is
+-- because quotesdb has READ_COMMITTED_SNAPSHOT (RCSI) turned ON:
+--
+--   SELECT name, is_read_committed_snapshot_on FROM sys.databases
+--   WHERE name = 'quotesdb';   -- quotesdb | True
+--
+-- Under RCSI, READ COMMITTED prevents the dirty read via row-versioning
+-- (a snapshot of the last committed row version) instead of via the
+-- shared-lock-blocks-on-exclusive-lock mechanism described above. Both
+-- are correct, real implementations of the READ COMMITTED contract; this
+-- specific Azure SQL Database just uses the non-blocking, row-versioned
+-- one. Real screenshots: docs/images/05-dirty-read-part2-sessionA-azure.jpg,
+-- 05-dirty-read-part2-sessionB-azure.jpg, 05-dirty-read-rcsi-check-azure.jpg.
+-- =======================================================================

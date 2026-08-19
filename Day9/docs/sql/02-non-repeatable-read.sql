@@ -100,3 +100,22 @@ UPDATE dbo.Quotes
 SET Text = 'Let yourself be silently drawn by the strange pull of what you really love.'
 WHERE Author = 'Rumi' AND Text LIKE 'Let yourself be silently drawn%';
 -- Restores the original seed text, whichever part left it edited.
+
+-- =======================================================================
+-- REAL AZURE SQL DATABASE RESULT for Part 2 (see the submission markdown,
+-- section "Non-repeatable read -- Part 2", for the exact self-contained
+-- batches actually run against quotesdb, Id = 14, via Azure Portal's
+-- Query editor):
+--
+-- Session B's Run click genuinely blocked -- a live "Cancel" button and
+-- running timer, screenshotted mid-block at 7 sec 419 ms -- and only
+-- completed once Session A committed, for a real total of 19 sec 384 ms
+-- (SPID 82). Session A finished at "Succeeded 20 sec 165 ms" with both
+-- reads showing the identical, unchanged original text. This is a real,
+-- observed lock wait: REPEATABLE READ's shared lock on the already-read
+-- row genuinely blocked Session B's UPDATE for the full duration of A's
+-- transaction, exactly as described above -- not a modeled outcome.
+-- Real screenshots: docs/images/04-non-repeatable-read-part2-sessionA-azure.jpg,
+-- 04-non-repeatable-read-part2-sessionB-blocking-azure.jpg,
+-- 04-non-repeatable-read-part2-sessionB-unblocked-azure.jpg.
+-- =======================================================================

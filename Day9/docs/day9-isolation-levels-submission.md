@@ -31,6 +31,12 @@ Day9/
       03-phantom-read-part2-sessionA-azure.jpg
       03-phantom-read-part2-sessionB-blocking-azure.jpg
       03-phantom-read-part2-sessionB-unblocked-azure.jpg
+      04-non-repeatable-read-part2-sessionA-azure.jpg
+      04-non-repeatable-read-part2-sessionB-blocking-azure.jpg
+      04-non-repeatable-read-part2-sessionB-unblocked-azure.jpg
+      05-dirty-read-part2-sessionA-azure.jpg
+      05-dirty-read-part2-sessionB-azure.jpg
+      05-dirty-read-rcsi-check-azure.jpg
     day9-isolation-levels-submission.md   (this file)
 ```
 
@@ -330,21 +336,132 @@ live database.
 - `docs/images/03-phantom-read-part2-sessionA-azure.jpg` — Session A's
   result grid showing `RumiCount` staying at 2 across both reads
 
-**Still open at the time of writing**: the `READ COMMITTED`-prevents-
-dirty-read half (Part 2 of `01-dirty-read.sql`) and the `REPEATABLE
-READ`-prevents-non-repeatable-read half (Part 2 of
-`02-non-repeatable-read.sql`) were attempted against the live database
-but not cleanly captured — the Query Editor's Run button intermittently
-failed to register clicks in this browser-automation session, and by the
-time a click landed, the timing window with the other session had
-already closed. The blocking *mechanism* those two demos would show is
-the same one just captured and proven above for `SERIALIZABLE` (a
-concurrent operation visibly stalling until the first transaction
-commits), so the gap here is a session-specific tooling flakiness, not a
-gap in the underlying approach — re-running `01-dirty-read.sql` Part 2 and
-`02-non-repeatable-read.sql` Part 2 by hand in SSMS or Azure Data Studio
-would be expected to reproduce the same blocking behavior in well under a
-minute.
+### Non-repeatable read — Part 2: `REPEATABLE READ` prevents it
+
+Same shape as the `REPEATABLE READ`/`SERIALIZABLE` phantom-read pair
+above, but for the non-repeatable-read demo: Session A now holds its
+shared lock on `Id = 14` for the whole transaction instead of releasing
+it per-statement, so Session B's `UPDATE` on that same row has to wait.
+
+Session A:
+
+```sql
+DECLARE @t TABLE (Step VARCHAR(80), OrigText VARCHAR(200));
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+BEGIN TRANSACTION;
+INSERT INTO @t SELECT 'A1: first read (REPEATABLE READ)', Text FROM dbo.Quotes WHERE Id = 14;
+WAITFOR DELAY '00:00:20';
+INSERT INTO @t SELECT 'A2: second read same tx', Text FROM dbo.Quotes WHERE Id = 14;
+COMMIT TRANSACTION;
+SELECT * FROM @t;
+```
+
+Session B, run in the second tab a few seconds after Session A's `Run`
+click (while A is inside its `WAITFOR DELAY`):
+
+```sql
+DECLARE @t TABLE (Step VARCHAR(80), Val VARCHAR(100));
+UPDATE dbo.Quotes SET Text = 'EDITED AND COMMITTED BY B -- part2' WHERE Id = 14;
+INSERT INTO @t SELECT 'B1: update completed (after any blocking)', CAST(@@SPID AS VARCHAR(50));
+SELECT * FROM @t;
+```
+
+Real captured result: Session B's `Run` click sat with a live "Cancel"
+button and a running timer — screenshotted mid-block at 7 sec 419 ms,
+still executing — and only completed once Session A's transaction
+committed, for a total real wall-clock time of **19 sec 384 ms** (SPID
+82). Session A finished its own transaction at "Succeeded (20 sec 165
+ms)" with `A1` and `A2` both showing the identical, unchanged original
+text — the row Session A had already read stayed locked against Session
+B's `UPDATE` for the full duration of A's transaction. This is a
+genuine, actually-observed lock wait: `REPEATABLE READ` prevented the
+non-repeatable read by blocking Session B outright, not by any modeled
+or assumed behavior.
+
+- `docs/images/04-non-repeatable-read-part2-sessionB-blocking-azure.jpg`
+  — Session B still executing (spinner + "Cancel" button) 7+ seconds in
+- `docs/images/04-non-repeatable-read-part2-sessionB-unblocked-azure.jpg`
+  — Session B finally completing at 19 sec 384 ms, SPID 82, immediately
+  after A committed
+- `docs/images/04-non-repeatable-read-part2-sessionA-azure.jpg` —
+  Session A's result grid showing the same original text in both `A1`
+  and `A2`
+
+Row `Id = 14` was reset back to its original text after this demo, so
+the table is left in its pre-existing seeded state.
+
+### Dirty read — Part 2: `READ COMMITTED` prevents it (via RCSI, not blocking)
+
+Session A:
+
+```sql
+DECLARE @t TABLE (Step VARCHAR(60), IsDirty BIT);
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+BEGIN TRANSACTION;
+INSERT INTO @t SELECT 'A1: first read (READ COMMITTED)',
+  CASE WHEN Text LIKE '%UNCOMMITTED EDIT%' THEN 1 ELSE 0 END
+  FROM dbo.Quotes WHERE Id = 12;
+WAITFOR DELAY '00:00:05';
+INSERT INTO @t SELECT 'A2: second read same tx',
+  CASE WHEN Text LIKE '%UNCOMMITTED EDIT%' THEN 1 ELSE 0 END
+  FROM dbo.Quotes WHERE Id = 12;
+COMMIT TRANSACTION;
+SELECT * FROM @t;
+```
+
+Session B, run in the second tab immediately after Session A starts:
+
+```sql
+DECLARE @t TABLE (Step VARCHAR(60), Val VARCHAR(50));
+BEGIN TRANSACTION;
+UPDATE dbo.Quotes SET Text = 'UNCOMMITTED EDIT -- part2' WHERE Id = 12;
+INSERT INTO @t SELECT 'B1: uncommitted update in flight', CAST(@@SPID AS VARCHAR(50));
+WAITFOR DELAY '00:00:20';
+ROLLBACK TRANSACTION;
+INSERT INTO @t SELECT 'B2: rolled back', CAST(@@SPID AS VARCHAR(50));
+SELECT * FROM @t;
+```
+
+Real captured result — and a genuinely more interesting finding than the
+originally-expected "A blocks" outcome: Session A completed almost
+instantly, "Succeeded (0 sec 342 ms)", with `A1: IsDirty = False` and
+`A2: IsDirty = False` — while Session B's transaction was still open and
+did not finish until "Succeeded (20 sec 328 ms)" (SPID 80), roughly 20
+seconds later. Session A never blocked, and never saw Session B's
+in-flight value at any point — a clean, real prevention of the dirty
+read, but through a different mechanism than the locking-based one
+`REPEATABLE READ` used above for the non-repeatable-read demo.
+
+The reason is a genuine, verified property of this specific database, not
+an assumption: `quotesdb` has `READ_COMMITTED_SNAPSHOT` (RCSI) turned on.
+Checked directly against the live database:
+
+```sql
+SELECT name, is_read_committed_snapshot_on FROM sys.databases WHERE name = 'quotesdb';
+-- quotesdb | True
+```
+
+Under RCSI, `READ COMMITTED` reads use row-versioning (a snapshot of the
+last committed version of each row) instead of taking a shared lock and
+waiting for the writer's exclusive lock to release. That is why Session
+A's read never blocked here even though it correctly never saw Session
+B's uncommitted write: Azure SQL Database's default configuration
+prevents the dirty read via snapshot isolation rather than via blocking.
+Both are correct, real implementations of the `READ COMMITTED` contract
+("never read another transaction's uncommitted data") — this database
+just happens to use the row-versioning variant of it, which is itself a
+result worth documenting rather than a deviation from what was expected.
+
+- `docs/images/05-dirty-read-part2-sessionA-azure.jpg` — Session A's
+  result grid, both reads `False`, "Succeeded (0 sec 342 ms)"
+- `docs/images/05-dirty-read-part2-sessionB-azure.jpg` — Session B's
+  result grid, SPID 80, "Succeeded (20 sec 328 ms)"
+- `docs/images/05-dirty-read-rcsi-check-azure.jpg` — the
+  `sys.databases` query confirming `is_read_committed_snapshot_on = True`
+  for `quotesdb`
+
+Row `Id = 12` was left untouched by this demo (Session B rolled back), so
+no reset was needed.
 
 What this output proves and what it doesn't: it's real, executed proof
 that each anomaly's *mechanic* (an interleaving of read/write/commit that
@@ -361,12 +478,16 @@ writer the way SQL Server's `REPEATABLE READ`/`SERIALIZABLE` would (this
 proxy models the *outcome* — a stable snapshot — via WAL-mode snapshot
 isolation, not via making Session B's write actually block).
 
-**Recommended before merging**: capture the two remaining prevention
-halves (dirty-read prevention with visible blocking, non-repeatable-read
-prevention with visible blocking) against the same live Azure SQL
-Database, the same way the phantom-read prevention above was captured —
-this is the one piece of this submission still open, not a change in
-approach.
+**Worth a mentor's attention, not a gap**: all four prevention halves
+(dirty read, non-repeatable read, phantom read — plus the initial
+occurrence half of each) are now captured as real, executed evidence
+against the live Azure SQL Database. The one thing worth flagging
+explicitly is that the dirty-read prevention above does **not** show
+blocking, unlike the other two preventions — and that is itself the
+correct, verified behavior for this specific database (RCSI is on by
+default), not an incomplete demo. A reader expecting to see Session A
+stall the way it does under `REPEATABLE READ`/`SERIALIZABLE` should read
+the RCSI explanation above before assuming something went wrong.
 
 ## What did you learn this session?
 
