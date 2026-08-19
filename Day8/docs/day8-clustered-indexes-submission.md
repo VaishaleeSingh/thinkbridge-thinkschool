@@ -24,6 +24,7 @@ Day8/
       01-clustered-vs-nonclustered-indexes.sql
     images/
       day8-01-clustered-vs-nonclustered-indexes.png
+      day8-01-rowcounts-sqlserver.jpg
     day8-clustered-indexes-submission.md   (this file)
 ```
 
@@ -132,15 +133,48 @@ not fabricated:
   A's plan despite touching *more* rows (1,440 vs 20) — because it isn't
   paying for a Key Lookup per row.
 
-**Recommended before merging**: run `00-` and `01-` as-is against a real
-SQL Server and paste the actual `SET STATISTICS IO ON` message text and a
-screenshot of the actual execution plan (Ctrl+M in SSMS) — the numbers
-above are a reasoned estimate from the same page-size arithmetic SQL
-Server's own storage engine uses, not a substitute for seeing the real
-numbers.
-
 Execution capture (SQLite `EXPLAIN QUERY PLAN`, real cardinalities, and
 this page-math table together): `docs/images/day8-01-clustered-vs-nonclustered-indexes.png`.
+
+### Real verification against a live Azure SQL Database — what it does and doesn't close
+
+The registry-access constraint above has since been lifted for this task,
+the same as Day 7: an Azure SQL Database (`quotesdb` on
+`thinkschool-quotes-sql`, Central India) was already provisioned for the
+Day 7 exercises, and `00-index-data-generation.sql` was run against it for
+real, creating `dbo.QuoteEngagementEvents` with its clustered index and the
+full 100,000-row set-based load. Both of this task's exact predicates were
+then re-run against that live table through the portal's Query editor:
+
+```sql
+SELECT UserId, COUNT(*) FROM dbo.QuoteEngagementEvents WHERE UserId = 42 GROUP BY UserId;
+SELECT QuoteId, EventType FROM dbo.QuoteEngagementEvents
+WHERE CreatedAt >= '2026-01-15' AND CreatedAt < '2026-01-16';
+```
+
+Real captured result: **`Affected rows: 20`** for `UserId = 42` and
+**`Affected rows: 1440`** for the `CreatedAt` range — both exact matches for
+the cardinalities the entire logical-reads table above was built from. This
+is real confirmation that the numbers weren't just internally consistent
+with each other, they're the actual row counts on the actual live database.
+
+![Azure SQL Database confirming the exact row counts (20 and 1440) the logical-read estimates were built from](images/day8-01-rowcounts-sqlserver.jpg)
+
+**What this does *not* close**: the `SET STATISTICS IO ON` logical-read
+counts and the execution plan diagram are still calculated, not measured —
+and, having now tested it directly against this database, that gap can't be
+closed through this interface at all. Running
+`SET STATISTICS IO ON; SELECT ...` through Azure Portal's Query editor
+executes without error, but the **Messages** tab only ever shows
+`Started executing on line 1` / `Affected rows: N` / `Query executed
+successfully` — no logical-read counts appear, confirming the same
+limitation Day 7's submission already flagged in passing. The toolbar also
+has no "include actual execution plan" control at all (just `Run` and
+`Save as view`), so there is no plan diagram to screenshot either. Getting
+the real numbers this task originally asked for would need a client that
+actually surfaces them — SSMS, Azure Data Studio, or `sqlcmd` against this
+same database — not a limitation of the estimate methodology, but of this
+specific portal tool.
 
 ## What did you learn this session?
 

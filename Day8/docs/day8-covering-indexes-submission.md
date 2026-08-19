@@ -22,6 +22,8 @@ Day8/
       02-covering-index-included-columns.sql
     images/
       day8-02-covering-index-included-columns.png
+      day8-02-rowcount-confirmed-sqlserver.jpg
+      day8-02-statistics-io-not-surfaced-sqlserver.jpg
     day8-covering-indexes-submission.md   (this file)
 ```
 
@@ -113,11 +115,43 @@ reads than step 1, ~186x fewer than the original baseline.
 Execution capture (SQLite `EXPLAIN QUERY PLAN` proof and the page-math
 table together): `docs/images/day8-02-covering-index-included-columns.png`.
 
-**Recommended before merging**: run `02-` (after `00-`) against a real SQL
-Server and paste the actual `STATISTICS IO` message text and a screenshot
-of the actual execution plan — same caveat as Task 1, these are reasoned
-estimates from the storage engine's own documented page arithmetic, not a
-substitute for the real numbers.
+### Real verification against a live Azure SQL Database — what it does and doesn't close
+
+Same lifted constraint as Task 1: this task's exact predicate was run
+against the live `quotesdb` (Azure SQL Database, `thinkschool-quotes-sql`)
+through the portal's Query editor, against the same `dbo.QuoteEngagementEvents`
+table Task 1's `00-index-data-generation.sql` created there:
+
+```sql
+SET STATISTICS IO ON;
+SELECT QuoteId, EventType, UserId, CreatedAt FROM dbo.QuoteEngagementEvents
+WHERE QuoteId = 5 AND CreatedAt >= '2026-01-15' AND CreatedAt < '2026-01-16';
+```
+
+Real captured result: **`Columns: 4  Rows: 111`** — an exact match for the
+cardinality (`111` matching rows) the entire logical-reads table above was
+built from, confirmed against the actual live data rather than assumed from
+the generator's construction:
+
+![Azure SQL Database confirming exactly 111 rows for the QuoteId=5, single-day CreatedAt predicate](images/day8-02-rowcount-confirmed-sqlserver.jpg)
+
+**What this does *not* close, and why**: `SET STATISTICS IO ON` was set
+before running this query specifically to test whether the portal would
+finally surface it for a query this task cares about — it didn't. The
+**Messages** tab shows only `Started executing on line 1` / `Affected rows:
+111` / `Query executed successfully`, with no logical-read counts anywhere,
+confirming the same limitation found while re-verifying Task 1:
+
+![Azure Portal's Query editor Messages tab after SET STATISTICS IO ON — no logical-read counts appear, only the affected-row count](images/day8-02-statistics-io-not-surfaced-sqlserver.jpg)
+
+There is also no "include actual execution plan" control in this editor's
+toolbar (just `Run` and `Save as view`), so there is no real plan diagram
+to capture either — for step 1 (plain index, Key Lookup present) or step 2
+(covering index, no lookup). The `STATISTICS IO` numbers and the plan
+diagrams above remain calculated, not measured, and that gap is now known
+to be a limitation of Azure Portal's Query editor specifically, not of the
+verification approach — a client that surfaces these (SSMS, Azure Data
+Studio, `sqlcmd`) against this same database would close it.
 
 ## What did you learn this session?
 
