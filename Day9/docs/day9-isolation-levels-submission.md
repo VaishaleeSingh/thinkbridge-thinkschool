@@ -22,6 +22,10 @@ Day9/
       03-phantom-read.sql
     verification/
       isolation_anomalies_proxy.py
+    images/
+      01-dirty-read-sessionA-azure.jpg
+      01-dirty-read-sessionB-azure.jpg
+      02-non-repeatable-read-sessionA-azure.jpg
     day9-isolation-levels-submission.md   (this file)
 ```
 
@@ -140,6 +144,110 @@ No phantom read: A's range read held steady across both counts.
 All three anomaly mechanics reproduced and their preventions verified.
 ```
 
+## Real verification against a live Azure SQL Database
+
+The sqlite3 proxy above was the fallback while this sandbox had no route to
+any SQL Server. That constraint has since been lifted: a real Azure SQL
+Database (`quotesdb` on server `thinkschool-quotes-sql`, Central India,
+Free tier) was provisioned, and this task was re-verified against it using
+two genuinely separate browser tabs on Azure Portal's Query editor
+(preview) — each "Run" click opens its own server-side connection/session
+(confirmed via `@@SPID`/`@@TRANCOUNT`), so two tabs really are two
+independent sessions, the same as two SSMS query windows.
+
+Mechanical note for anyone repeating this: the Query editor does not let a
+`BEGIN TRANSACTION` in one Run click stay open for a second Run click in
+the same tab — every Run is a fresh connection. So each session's entire
+sequence (including the deliberate pause between two reads) has to be one
+self-contained batch with an embedded `WAITFOR DELAY` instead of multiple
+sequential Run clicks, and because the results grid only shows the last
+result set of a batch, each batch accumulates its step-by-step observations
+into a `DECLARE @t TABLE (...)` variable and does one final
+`SELECT * FROM @t` at the end. `docs/sql/01-dirty-read.sql` and
+`02-non-repeatable-read.sql` show the two-Run-click version meant for SSMS
+(where a transaction *can* span Run clicks); the batches actually executed
+against Azure Portal's Query editor are reproduced below since they differ
+in this one structural way.
+
+**Dirty read — Part 1, `READ UNCOMMITTED` (real result: anomaly occurred)**
+
+Session A:
+```sql
+DECLARE @t TABLE (Step VARCHAR(60), Val VARCHAR(200));
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+BEGIN TRANSACTION;
+INSERT INTO @t SELECT 'A1: before B writes (READ UNCOMMITTED)', Text FROM dbo.Quotes WHERE Id = 12;
+WAITFOR DELAY '00:00:20';
+INSERT INTO @t SELECT 'A2: while B uncommitted (dirty read?)', Text FROM dbo.Quotes WHERE Id = 12;
+WAITFOR DELAY '00:00:20';
+INSERT INTO @t SELECT 'A3: after B rollback', Text FROM dbo.Quotes WHERE Id = 12;
+COMMIT TRANSACTION;
+SELECT * FROM @t;
+```
+Session B (run while A is inside its first `WAITFOR`):
+```sql
+DECLARE @t TABLE (Step VARCHAR(60), Val VARCHAR(200));
+BEGIN TRANSACTION;
+UPDATE dbo.Quotes SET Text = 'UNCOMMITTED EDIT -- should never be visible' WHERE Id = 12;
+INSERT INTO @t SELECT 'B1: uncommitted update done', CAST(@@SPID AS VARCHAR(50));
+WAITFOR DELAY '00:00:20';
+ROLLBACK TRANSACTION;
+INSERT INTO @t SELECT 'B2: rolled back', CAST(@@SPID AS VARCHAR(50));
+SELECT * FROM @t;
+```
+Real captured result (screenshots in `docs/images/`): Session A's `A2` row
+returned `'UNCOMMITTED EDIT -- should never be visible'` — B's SPID-76
+in-flight, not-yet-committed write — while B's transaction was still open.
+B then rolled back, and A's `A3` row showed the original text again. This
+is a genuine dirty read: A read a value that, moments later, never existed
+at any committed point in time.
+- `docs/images/01-dirty-read-sessionA-azure.jpg` — Session A's result grid
+  (`A1`/`A2`/`A3`, "Succeeded (40 sec 174 ms)")
+- `docs/images/01-dirty-read-sessionB-azure.jpg` — Session B's result grid
+  (`B1`/`B2`, SPID 76)
+
+**Non-repeatable read — Part 1, `READ COMMITTED` (real result: anomaly occurred)**
+
+Session A:
+```sql
+DECLARE @t TABLE (Step VARCHAR(60), IsEditedByB BIT);
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+BEGIN TRANSACTION;
+INSERT INTO @t SELECT 'A1: first read (READ COMMITTED)',
+  CASE WHEN Text LIKE '%EDITED AND COMMITTED BY B%' THEN 1 ELSE 0 END
+  FROM dbo.Quotes WHERE Id = 14;
+WAITFOR DELAY '00:00:15';
+INSERT INTO @t SELECT 'A2: second read same tx',
+  CASE WHEN Text LIKE '%EDITED AND COMMITTED BY B%' THEN 1 ELSE 0 END
+  FROM dbo.Quotes WHERE Id = 14;
+COMMIT TRANSACTION;
+SELECT * FROM @t;
+```
+Session B (run while A is inside its `WAITFOR`):
+```sql
+UPDATE dbo.Quotes SET Text = 'EDITED AND COMMITTED BY B' WHERE Id = 14;
+```
+(`IsEditedByB` is a boolean flag rather than the raw `Text` column purely
+because Azure Portal's results grid truncates long strings — the flag
+removes any ambiguity about whether the value actually changed.)
+
+Real captured result: `A1: IsEditedByB = False`, `A2: IsEditedByB = True`,
+"Succeeded (15 sec 195 ms)" — the same still-open transaction read the same
+row twice and got two different answers, because Session B committed a
+real change in between. This is a genuine non-repeatable read.
+- `docs/images/02-non-repeatable-read-sessionA-azure.jpg` — Session A's
+  result grid confirming `False` then `True`
+
+**Still to capture against the live database at the time of writing**: the
+`READ COMMITTED`-prevents-dirty-read half (Part 2 of `01-dirty-read.sql`),
+the `REPEATABLE READ`-prevents-non-repeatable-read half (Part 2 of
+`02-non-repeatable-read.sql`, including watching Session B's UPDATE
+visibly block until Session A commits), and both halves of the phantom-read
+demo (`03-phantom-read.sql`). The mechanism for all of these is proven
+above — the same two-tab, single-batch, `@t`-accumulator technique — and
+the only reason they're not in this write-up yet is a browser-extension
+disconnect encountered mid-session, not a gap in the approach.
+
 What this output proves and what it doesn't: it's real, executed proof
 that each anomaly's *mechanic* (an interleaving of read/write/commit that
 either does or doesn't cross a transaction boundary) genuinely produces
@@ -155,12 +263,11 @@ writer the way SQL Server's `REPEATABLE READ`/`SERIALIZABLE` would (this
 proxy models the *outcome* — a stable snapshot — via WAL-mode snapshot
 isolation, not via making Session B's write actually block).
 
-**Recommended before merging**: run the four `.sql` files against a real
-SQL Server, two SSMS tabs at a time as the comments direct, and paste the
-actual blocking behavior observed (which tab visibly waits, and for how
-long) alongside a screenshot — same caveat every SQL exercise this week
-has carried, this is reasoned from documented behavior and an engine-
-agnostic proxy, not a substitute for watching a real session block.
+**Recommended before merging**: capture the remaining halves listed above
+(dirty-read prevention, non-repeatable-read prevention with visible
+blocking, and both phantom-read halves) against the same live Azure SQL
+Database, the same way the two anomalies above were captured — this is the
+one piece of this submission still open, not a change in approach.
 
 ## What did you learn this session?
 
