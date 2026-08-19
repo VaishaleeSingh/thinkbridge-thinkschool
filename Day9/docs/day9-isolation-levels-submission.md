@@ -26,6 +26,11 @@ Day9/
       01-dirty-read-sessionA-azure.jpg
       01-dirty-read-sessionB-azure.jpg
       02-non-repeatable-read-sessionA-azure.jpg
+      03-phantom-read-part1-sessionA-azure.jpg
+      03-phantom-read-part1-sessionB-insert-azure.jpg
+      03-phantom-read-part2-sessionA-azure.jpg
+      03-phantom-read-part2-sessionB-blocking-azure.jpg
+      03-phantom-read-part2-sessionB-unblocked-azure.jpg
     day9-isolation-levels-submission.md   (this file)
 ```
 
@@ -238,15 +243,108 @@ real change in between. This is a genuine non-repeatable read.
 - `docs/images/02-non-repeatable-read-sessionA-azure.jpg` — Session A's
   result grid confirming `False` then `True`
 
-**Still to capture against the live database at the time of writing**: the
-`READ COMMITTED`-prevents-dirty-read half (Part 2 of `01-dirty-read.sql`),
-the `REPEATABLE READ`-prevents-non-repeatable-read half (Part 2 of
-`02-non-repeatable-read.sql`, including watching Session B's UPDATE
-visibly block until Session A commits), and both halves of the phantom-read
-demo (`03-phantom-read.sql`). The mechanism for all of these is proven
-above — the same two-tab, single-batch, `@t`-accumulator technique — and
-the only reason they're not in this write-up yet is a browser-extension
-disconnect encountered mid-session, not a gap in the approach.
+### Phantom read — Part 1: `REPEATABLE READ` allows it
+
+Session A (real T-SQL batch run against the live database, using the same
+`@t` table-variable accumulation trick):
+
+```sql
+DECLARE @t TABLE (Step VARCHAR(80), RumiCount INT);
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+BEGIN TRANSACTION;
+INSERT INTO @t SELECT 'A1: first COUNT (before B inserts)', COUNT(*) FROM dbo.Quotes WHERE Author = 'Rumi';
+WAITFOR DELAY '00:00:25';
+INSERT INTO @t SELECT 'A2: second COUNT (same still-open tx)', COUNT(*) FROM dbo.Quotes WHERE Author = 'Rumi';
+COMMIT TRANSACTION;
+SELECT * FROM @t;
+```
+
+Session B, run in a second tab a few seconds after Session A's `Run` click
+(while A is still inside its `WAITFOR DELAY`):
+
+```sql
+DECLARE @t TABLE (Step VARCHAR(80), Val VARCHAR(100));
+INSERT INTO dbo.Quotes (Author, Text, CreatedByUserId)
+VALUES ('Rumi', 'PHANTOM ROW -- inserted by Session B mid-transaction', NULL);
+INSERT INTO @t SELECT 'B1: phantom row inserted and auto-committed', CAST(@@SPID AS VARCHAR(50));
+SELECT * FROM @t;
+```
+
+Real captured result: Session B's insert succeeded immediately (no
+blocking at all — SPID 81, "Succeeded 0 sec 154 ms") while Session A's
+transaction was still open under `REPEATABLE READ`. Session A then
+finished its `WAITFOR DELAY` and returned `A1: RumiCount = 2`,
+`A2: RumiCount = 3` in the same still-open transaction ("Succeeded 25 sec
+158 ms"). Two reads of the identical range query, inside one transaction,
+disagreed — a genuine phantom read, and genuine proof that `REPEATABLE
+READ`'s row-level locks from A1 did nothing to stop a brand-new row from
+being inserted into the range.
+- `docs/images/03-phantom-read-part1-sessionB-insert-azure.jpg` — Session
+  B's instant, unblocked insert (SPID 81)
+- `docs/images/03-phantom-read-part1-sessionA-azure.jpg` — Session A's
+  result grid showing `RumiCount` go from 2 to 3
+
+### Phantom read — Part 2: `SERIALIZABLE` prevents it
+
+Same shape, only Session A's isolation level changes:
+
+```sql
+DECLARE @t TABLE (Step VARCHAR(80), RumiCount INT);
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+BEGIN TRANSACTION;
+INSERT INTO @t SELECT 'A1: first COUNT (SERIALIZABLE range lock taken)', COUNT(*) FROM dbo.Quotes WHERE Author = 'Rumi';
+WAITFOR DELAY '00:00:20';
+INSERT INTO @t SELECT 'A2: second COUNT (same still-open tx)', COUNT(*) FROM dbo.Quotes WHERE Author = 'Rumi';
+COMMIT TRANSACTION;
+SELECT * FROM @t;
+```
+
+Session B (same insert as Part 1, run about 7 seconds after Session A
+started):
+
+```sql
+DECLARE @t TABLE (Step VARCHAR(80), Val VARCHAR(100));
+INSERT INTO dbo.Quotes (Author, Text, CreatedByUserId)
+VALUES ('Rumi', 'PHANTOM ROW -- inserted by Session B mid-transaction', NULL);
+INSERT INTO @t SELECT 'B1: insert completed (after any blocking)', CAST(@@SPID AS VARCHAR(50));
+SELECT * FROM @t;
+```
+
+Real captured result — this is the strongest piece of evidence in this
+submission: Session B's `Run` click sat spinning with a live "Cancel"
+button and a running timer (screenshot taken mid-block at 7 sec 446 ms,
+still executing) instead of completing instantly the way it did in Part
+1. It only finished once Session A's transaction committed, for a total
+real wall-clock time of **12 sec 810 ms** (SPID 79) — genuinely blocked by
+Session A's `SERIALIZABLE` range lock, not merely "ran fast." Session A's
+own result: `A1: RumiCount = 2`, `A2: RumiCount = 2`, "Succeeded 20 sec
+566 ms" — the count never changed within A's transaction, because B's
+insert physically could not complete until A released its lock. This is
+not a modeled outcome; it is an actually-observed lock wait against the
+live database.
+- `docs/images/03-phantom-read-part2-sessionB-blocking-azure.jpg` —
+  Session B still executing (spinner + "Cancel" button) 7+ seconds in
+- `docs/images/03-phantom-read-part2-sessionB-unblocked-azure.jpg` —
+  Session B finally completing at 12 sec 810 ms, immediately after A
+  committed
+- `docs/images/03-phantom-read-part2-sessionA-azure.jpg` — Session A's
+  result grid showing `RumiCount` staying at 2 across both reads
+
+**Still open at the time of writing**: the `READ COMMITTED`-prevents-
+dirty-read half (Part 2 of `01-dirty-read.sql`) and the `REPEATABLE
+READ`-prevents-non-repeatable-read half (Part 2 of
+`02-non-repeatable-read.sql`) were attempted against the live database
+but not cleanly captured — the Query Editor's Run button intermittently
+failed to register clicks in this browser-automation session, and by the
+time a click landed, the timing window with the other session had
+already closed. The blocking *mechanism* those two demos would show is
+the same one just captured and proven above for `SERIALIZABLE` (a
+concurrent operation visibly stalling until the first transaction
+commits), so the gap here is a session-specific tooling flakiness, not a
+gap in the underlying approach — re-running `01-dirty-read.sql` Part 2 and
+`02-non-repeatable-read.sql` Part 2 by hand in SSMS or Azure Data Studio
+would be expected to reproduce the same blocking behavior in well under a
+minute.
 
 What this output proves and what it doesn't: it's real, executed proof
 that each anomaly's *mechanic* (an interleaving of read/write/commit that
@@ -263,11 +361,12 @@ writer the way SQL Server's `REPEATABLE READ`/`SERIALIZABLE` would (this
 proxy models the *outcome* — a stable snapshot — via WAL-mode snapshot
 isolation, not via making Session B's write actually block).
 
-**Recommended before merging**: capture the remaining halves listed above
-(dirty-read prevention, non-repeatable-read prevention with visible
-blocking, and both phantom-read halves) against the same live Azure SQL
-Database, the same way the two anomalies above were captured — this is the
-one piece of this submission still open, not a change in approach.
+**Recommended before merging**: capture the two remaining prevention
+halves (dirty-read prevention with visible blocking, non-repeatable-read
+prevention with visible blocking) against the same live Azure SQL
+Database, the same way the phantom-read prevention above was captured —
+this is the one piece of this submission still open, not a change in
+approach.
 
 ## What did you learn this session?
 
