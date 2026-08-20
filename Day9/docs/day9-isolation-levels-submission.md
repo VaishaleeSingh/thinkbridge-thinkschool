@@ -1,10 +1,5 @@
 # Day 9 — mentor submission (isolation levels + the read anomalies)
 
-## GitHub link
-
-https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day9-isolation-levels-read-anomalies/Day9
-
-(Replace with the pull request URL once opened.)
 
 ## Notes for mentor
 
