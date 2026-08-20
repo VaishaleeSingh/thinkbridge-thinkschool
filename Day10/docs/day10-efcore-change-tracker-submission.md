@@ -2,9 +2,7 @@
 
 ## GitHub link
 
-https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day10-efcore-change-tracker-asnotracking/Day10
-
-(Replace with the pull request URL once opened.)
+https://github.com/thinkbridge-thinkschool/VaishaleeSingh/pull/28
 
 ## What this task actually asks for, in simple words
 
