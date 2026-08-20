@@ -1,11 +1,5 @@
 # Day 9 — mentor submission (reproduce and resolve a deadlock)
 
-## GitHub link
-
-https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day9-deadlock-reproduction-and-resolution/Day9
-
-(Replace with the pull request URL once opened.)
-
 ## Notes for mentor
 
 New content only, its own branch (`day9-deadlock-reproduction-and-resolution`,
