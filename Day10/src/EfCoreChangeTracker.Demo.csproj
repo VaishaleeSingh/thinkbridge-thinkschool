@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <!--
+      Workstation GC, concurrent GC off: the allocation numbers this demo
+      prints (GC.GetAllocatedBytesForCurrentThread) are only meaningful if
+      nothing else is allocating on other threads/heaps at the same time.
+      Server GC (the ASP.NET Core default QuotesApi itself runs under)
+      would still work for this demo's purpose, but workstation GC keeps
+      the numbers simpler to reason about for a first read of this code.
+
+      net10.0 to match this repo's other QuotesApi projects (see
+      Day7/piece2/QuotesApi/QuotesApi.csproj) and the .NET version actually
+      installed on the machine this runs on.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>
