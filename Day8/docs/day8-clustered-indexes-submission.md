@@ -1,10 +1,6 @@
 # Day 8 — mentor submission (clustered vs non-clustered indexes)
 
-## GitHub link
 
-https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day8-clustered-indexes/Day8
-
-(Replace with the pull request URL once opened.)
 
 ## Notes for mentor
 
