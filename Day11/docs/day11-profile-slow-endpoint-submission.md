@@ -2,9 +2,25 @@
 
 ## GitHub link
 
-https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day11-profile-slow-endpoint/Day11
+https://github.com/thinkbridge-thinkschool/VaishaleeSingh/pull/32
 
-(Replace with the pull request URL once opened.)
+## The two biggest problems found
+
+1. **An N+1 — 501 database round trips to answer one HTTP request.** One query
+   for the distinct author list, then one more per author to count that
+   author's quotes. Fixed by a single `GROUP BY`, moving the grouping into the
+   database instead of a C# loop.
+2. **No index on `Quotes.Author`.** Pre-existing rather than manufactured for
+   this exercise: `Quote` is the one entity in
+   `QuotesDbContext.OnModelCreating` with no configuration at all, and the
+   startup migration log creates indexes on `Users(Email)` and three on
+   `RefreshTokens` while creating none on `Quotes(Author)`. So each of those
+   500 per-author queries had no choice but to scan the whole table.
+
+They compound rather than add — 500 scans × 80,000 rows is 40,000,000 rows
+read to return 500 numbers — and the measurements show they carried comparable
+weight: fixing either one alone reaches roughly 2,100–2,600 requests in 30 s,
+while fixing both reaches 35,902.
 
 ## What this task asks for, in simple words
 
@@ -523,15 +539,26 @@ N+1 makes it 500 scans per request, and that is what turns "slow" into "serves
 nothing at all".
 
 And the accidental finding I did not expect to be the most transferable one:
-**turning on the logging that reveals the problem changes the problem.** The
-same indexed endpoint measured 5,857 ms with EF logging at `Debug` and 226 ms
-at `Warning` — a 22x observer effect from instrumentation alone, because the
-thing being logged is the thing there are 501 of. Twice in one exercise a
-believable millisecond number turned out to be measuring something other than
-the endpoint (the timeout ceiling, then the console). The durable habit is to
-keep a structural counter alongside the timing: `queriesIssued` was right in
-every configuration, because no amount of logging can change how many round
-trips the code makes.
+**a profile hands you plausible numbers that mean something other than what
+they appear to, and it happened three times in one exercise.**
+
+1. The baseline's `p50 10.02s / p99 10.04s` was bombardier's request timeout,
+   not the endpoint's latency. Only the `2xx - 0` line underneath gave it away.
+2. A single request measured **5,857 ms** with EF logging at `Debug` and
+   **226 ms** at `Warning` — a ~22x observer effect from instrumentation alone,
+   because the thing being logged is the thing there are 501 of. Turning on the
+   logging that reveals the problem changed the problem.
+3. My first test of the Production route-gate **passed when it should have
+   failed**: `launchSettings.json` silently overrode the `ASPNETCORE_ENVIRONMENT`
+   I set in the shell, so the app never left Development and the gate was never
+   exercised.
+
+Two habits fall out of that. Keep a **structural counter** beside every timing
+— `queriesIssued` was correct in every configuration, because no amount of
+logging can change how many round trips the code makes. And pair every
+**negative** result with a control that proves the negative means what it looks
+like: `/health` returning `Healthy` is what turned "diagnostics 404s" from
+"maybe the server is down" into "the route was never registered".
 
 ## What would break this?
 
