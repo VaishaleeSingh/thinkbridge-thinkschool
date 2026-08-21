@@ -143,6 +143,16 @@ app.MapQuotesHealthChecks();
 app.MapQuoteEndpoints();
 app.MapCollectionEndpoints();
 
+// Day 11 -- the deliberately slow endpoint used for performance profiling,
+// plus the seed/index/stats helpers needed to profile it. Mapped LAST and,
+// unlike everything above, mapped conditionally: MapDiagnosticsEndpoints
+// returns without registering a single route unless this app is running in
+// Development or "Diagnostics:Enabled" is explicitly true. In a deployed
+// environment these routes do not exist -- see
+// Extensions/DiagnosticsEndpointExtensions.cs for why that is the right
+// guarantee for endpoints that are both unauthenticated and destructive.
+app.MapDiagnosticsEndpoints();
+
 app.Run();
 
 // Exposes the auto-generated Program class to the test project, so
