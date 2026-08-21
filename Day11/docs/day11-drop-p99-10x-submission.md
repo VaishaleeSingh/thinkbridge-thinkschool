@@ -2,9 +2,24 @@
 
 ## GitHub link
 
-https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day11-drop-p99-10x/Day11
+https://github.com/thinkbridge-thinkschool/VaishaleeSingh/pull/33
 
-(Replace with the pull request URL once opened.)
+## In plain English, before the detail
+
+An endpoint was asking the database **501 separate questions** to answer one web
+request: "who are all the authors?", then "how many quotes does this author
+have?" once for every one of the 500 authors. On top of that, the column it was
+filtering on (`Author`) had **no index**, so every one of those 500 questions
+made the database read all 50,000 rows to find the ~100 it wanted.
+
+Two changes fixed it. First, ask **one** question instead of 501 — let the
+database do the counting with a `GROUP BY` and hand back all 500 answers at
+once. Second, **add the index**, so when a query does filter by author the
+database can jump straight to the right rows instead of reading the whole table.
+
+The endpoint went from serving **20 requests in 30 seconds** to serving
+**51,031**, and the slowest requests went from about a minute to about 23
+milliseconds.
 
 ## Result up front
 
