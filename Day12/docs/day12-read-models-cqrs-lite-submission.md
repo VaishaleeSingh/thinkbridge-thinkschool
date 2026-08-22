@@ -2,9 +2,7 @@
 
 ## GitHub link
 
-https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day12-read-models-cqrs-lite/Day12
-
-(Replace with the pull request URL once opened.)
+https://github.com/thinkbridge-thinkschool/VaishaleeSingh/pull/34
 
 ## In plain English
 
