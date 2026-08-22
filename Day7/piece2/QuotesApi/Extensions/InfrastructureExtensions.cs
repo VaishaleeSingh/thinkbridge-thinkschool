@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using QuotesApi.Authorization;
 using QuotesApi.Configuration;
 using QuotesApi.Data;
+using QuotesApi.Queries;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
 using System.Text;
@@ -41,6 +42,11 @@ public static class InfrastructureExtensions
 
         services.AddScoped<IQuoteRepository, QuoteRepository>();
         services.AddScoped<ICollectionRepository, CollectionRepository>();
+
+        // Day 12 -- the query side, registered alongside the repository rather
+        // than replacing it. Scoped for the same reason: it takes the scoped
+        // QuotesDbContext, so it must not outlive the request.
+        services.AddScoped<ICollectionQueries, CollectionQueries>();
 
         // ------------------------------------------------------------
         // STEP 2: Small helper services

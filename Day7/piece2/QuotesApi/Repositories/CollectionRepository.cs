@@ -13,53 +13,19 @@ public class CollectionRepository : ICollectionRepository
         _db = db;
     }
 
-    public async Task<IReadOnlyList<CollectionWithQuotes>> ListByOwnerAsync(
-        string ownerId,
-        CancellationToken cancellationToken = default)
-    {
-        // The caller's collections. Items come back with them automatically,
-        // because CollectionItem is owned (see QuotesDbContext.OwnsMany) --
-        // but an item is only a QuoteId, so the quotes themselves still have
-        // to be fetched.
-        var collections = await _db.Collections
-            .Where(x => x.OwnerId == ownerId)
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
-
-        // Two round trips, not one-per-collection. Every quote id the caller
-        // could possibly need is gathered first and fetched in a single
-        // query; the per-collection shaping then happens in memory against
-        // that lookup. The round trip count is now a constant -- it does not
-        // move when the caller has 15 collections instead of 3, which is the
-        // whole point of the fix.
-        var quoteIds = collections
-            .SelectMany(collection => collection.Items)
-            .Select(item => item.QuoteId)
-            .Distinct()
-            .ToList();
-
-        var quotesById = quoteIds.Count == 0
-            ? new Dictionary<int, QuoteSummary>()
-            : await _db.Quotes
-                .Where(quote => quoteIds.Contains(quote.Id))
-                .AsNoTracking()
-                .Select(quote => new QuoteSummary(quote.Id, quote.Author, quote.Text))
-                .ToDictionaryAsync(quote => quote.Id, cancellationToken);
-
-        return collections
-            .Select(collection => new CollectionWithQuotes(
-                collection.Id,
-                collection.Name,
-                collection.Items
-                    // A missing id means the quote was deleted out from under
-                    // the collection. Skip it rather than throwing -- the old
-                    // per-collection query silently did the same thing.
-                    .Select(item => quotesById.TryGetValue(item.QuoteId, out var quote) ? quote : null)
-                    .Where(quote => quote is not null)
-                    .Select(quote => quote!)
-                    .ToList()))
-            .ToList();
-    }
+    // Day 12 -- the ListByOwnerAsync implementation that used to sit here has
+    // moved to Queries/CollectionQueries.cs.
+    //
+    // Worth recording what it did, because it is the anti-pattern this split
+    // exists to remove: it loaded every Collection aggregate for the owner
+    // (with all of their owned items), gathered every quote id across all of
+    // them, ran a SECOND query for those quotes -- selecting Author and the
+    // full Text -- and then reshaped the result in memory. Two round trips,
+    // full quote bodies fetched for a list screen that renders none of them,
+    // and aggregates materialized only to be projected away.
+    //
+    // None of that was a bug. It was a read being served by a type whose job
+    // is writes, and it is the predictable shape that takes.
 
     public async Task<Collection?> GetByIdAsync(
         int id,
