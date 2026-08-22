@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Dapper;
 using Microsoft.EntityFrameworkCore;
 using QuotesApi.Data;
 using QuotesApi.Models;
@@ -108,6 +109,73 @@ public static class DiagnosticsEndpointExtensions
         });
 
         // ------------------------------------------------------------------
+        // Day 12 task 2 -- the SAME query, hand-written and run through Dapper.
+        // ------------------------------------------------------------------
+        // Two decisions here exist to keep the comparison honest, and both are
+        // easy to get wrong in a way that flatters Dapper:
+        //
+        //   1. It borrows EF's connection via db.Database.GetDbConnection()
+        //      rather than opening its own. Dapper on a fresh SqliteConnection
+        //      would be measuring connection setup as well as mapping, and
+        //      would also sidestep EF's pooling -- so the "win" would partly be
+        //      an artefact of the harness. Sharing the connection means the only
+        //      thing that differs between this endpoint and the one above is
+        //      how a result set becomes objects.
+        //
+        //   2. The SQL is deliberately written to match what EF generates for
+        //      the grouped query, not to be cleverer than it. EF emits
+        //      SELECT "q"."Author", COUNT(*) FROM "Quotes" AS "q" GROUP BY "q"."Author"
+        //      and there is nothing to improve on -- so any measured difference
+        //      is the cost of EF's query pipeline and materializer, which is the
+        //      thing actually under test. Hand-writing a *better* query would be
+        //      a different (and much less interesting) experiment: it would
+        //      prove that better SQL is faster, not that Dapper is.
+        //
+        // The response shape is identical to the EF endpoint's so bombardier
+        // compares like with like.
+        group.MapGet("/authors-quotes-dapper", async (
+            QuotesDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var stopwatch = Stopwatch.StartNew();
+
+            // No aliasing gymnastics needed: the column names match the record's
+            // parameter names, so Dapper's default mapping does the work. That
+            // is Dapper's actual value proposition -- it is a mapper, not a
+            // query builder, and it expects you to own the SQL.
+            const string sql = """
+                SELECT Author, COUNT(*) AS QuoteCount
+                FROM Quotes
+                GROUP BY Author
+                """;
+
+            var connection = db.Database.GetDbConnection();
+
+            // AsList(), not ToList(). QueryAsync<T> already buffers into a
+            // List<T> internally and hands it back as IEnumerable<T>, so
+            // ToList() copies all 500 rows a SECOND time on every request --
+            // while EF's ToListAsync() returns its list with no copy. The first
+            // version of this endpoint had exactly that flaw, and it made the
+            // Dapper side look ~20% slower under load than it actually is.
+            // Dapper ships AsList() precisely for this: it returns the existing
+            // List when there is one and only copies when there is not.
+            var results = (await connection.QueryAsync<AuthorQuoteRow>(
+                new CommandDefinition(sql, cancellationToken: cancellationToken)))
+                .AsList();
+
+            stopwatch.Stop();
+
+            return Results.Ok(new
+            {
+                strategy = "single GROUP BY via Dapper",
+                queriesIssued = 1,
+                elapsedMs = stopwatch.ElapsedMilliseconds,
+                authorCount = results.Count,
+                authors = results.OrderByDescending(r => r.QuoteCount).Take(10)
+            });
+        });
+
+        // ------------------------------------------------------------------
         // THE FIXED ENDPOINT -- same answer, one query.
         // ------------------------------------------------------------------
         // Identical response shape to the endpoint above, so the two are
@@ -142,6 +210,100 @@ public static class DiagnosticsEndpointExtensions
                 elapsedMs = stopwatch.ElapsedMilliseconds,
                 authorCount = results.Count,
                 authors = results.OrderByDescending(r => r.QuoteCount).Take(10)
+            });
+        });
+
+        // ------------------------------------------------------------------
+        // Day 12 task 2, part 2 -- the case where Dapper SHOULD win.
+        // ------------------------------------------------------------------
+        // The grouped-query comparison above came out against Dapper, and the
+        // reason was structural: 500 narrow rows give a mapper almost nothing
+        // to do, so the query cost dominated and both were the same. That is a
+        // real result, but it only measures one end of the range. Asserting
+        // "Dapper earns its place on large result sets" off the back of it
+        // would be reasoning past the evidence.
+        //
+        // So this pair moves the one variable that should matter: the amount of
+        // materialization. Same table, same provider, same load -- but now
+        // thousands of WIDE rows (Text is ~620 characters) instead of 500
+        // narrow ones. If the mapper is ever the bottleneck, it is here.
+        //
+        // Both endpoints deliberately materialize into the SAME DTO and then
+        // return only a summary -- a count and the total text length. That is
+        // what isolates mapping cost:
+        //   - serialising thousands of wide rows to JSON would dominate the
+        //     measurement and is identical work for both, so it is excluded;
+        //   - projecting to the same type on both sides means neither gets an
+        //     advantage from a different object shape;
+        //   - summing the text lengths forces every row to be fully
+        //     materialized rather than lazily skipped.
+
+        group.MapGet("/quotes-wide-ef", async (
+            int? rows,
+            QuotesDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var take = rows is > 0 and <= 50_000 ? rows.Value : 5_000;
+            var stopwatch = Stopwatch.StartNew();
+
+            var results = await db.Quotes
+                .AsNoTracking()
+                .OrderBy(q => q.Id)
+                .Take(take)
+                .Select(q => new QuoteWideRow
+                {
+                    Id = q.Id,
+                    Author = q.Author,
+                    Text = q.Text,
+                    CreatedByUserId = q.CreatedByUserId
+                })
+                .ToListAsync(cancellationToken);
+
+            stopwatch.Stop();
+
+            return Results.Ok(new
+            {
+                strategy = "wide rows via EF projection",
+                rowsRequested = take,
+                rowsMaterialized = results.Count,
+                totalTextLength = results.Sum(r => (long)r.Text.Length),
+                elapsedMs = stopwatch.ElapsedMilliseconds
+            });
+        });
+
+        group.MapGet("/quotes-wide-dapper", async (
+            int? rows,
+            QuotesDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var take = rows is > 0 and <= 50_000 ? rows.Value : 5_000;
+            var stopwatch = Stopwatch.StartNew();
+
+            // Same shape, same ordering, same row count as the EF endpoint --
+            // and again written to match what EF emits rather than to beat it,
+            // so the comparison stays about mapping and not about SQL.
+            const string sql = """
+                SELECT Id, Author, Text, CreatedByUserId
+                FROM Quotes
+                ORDER BY Id
+                LIMIT @take
+                """;
+
+            var connection = db.Database.GetDbConnection();
+
+            var results = (await connection.QueryAsync<QuoteWideRow>(
+                new CommandDefinition(sql, new { take }, cancellationToken: cancellationToken)))
+                .AsList();
+
+            stopwatch.Stop();
+
+            return Results.Ok(new
+            {
+                strategy = "wide rows via Dapper",
+                rowsRequested = take,
+                rowsMaterialized = results.Count,
+                totalTextLength = results.Sum(r => (long)r.Text.Length),
+                elapsedMs = stopwatch.ElapsedMilliseconds
             });
         });
 
@@ -305,4 +467,61 @@ public static class DiagnosticsEndpointExtensions
     }
 
     private record AuthorQuoteCount(string Author, int QuoteCount);
+}
+
+/// <summary>
+/// Day 12 task 2 -- the row shape Dapper materializes for the hot read path.
+///
+/// A class with settable properties, NOT a positional record, and that is the
+/// single most useful thing this exercise taught me. The first version was
+/// `record AuthorQuoteRow(string Author, int QuoteCount)` and every request
+/// failed with:
+///
+///     A parameterless default constructor or one matching signature
+///     (System.String Author, System.Int64 QuoteCount) is required for
+///     AuthorQuoteRow materialization
+///
+/// SQLite returns COUNT(*) as Int64. Dapper resolves a constructor by
+/// reflection and matches parameter types exactly -- it will not narrow Int64
+/// to Int32 to make a constructor fit. EF Core never hits this because it is
+/// handed a model, knows the column's store type, and compiles a materializer
+/// that converts.
+///
+/// The obvious fix -- declare `long QuoteCount` -- trades one bug for a worse
+/// one: on SQL Server COUNT(*) is Int32, and Dapper will not widen Int32 to
+/// Int64 for a constructor parameter either. So a record tuned to SQLite would
+/// break the moment this ran against the production provider, and it would
+/// break at runtime, in the hot path, not at compile time.
+///
+/// Settable properties avoid the whole problem because Dapper's property path
+/// DOES coerce, so Int64 or Int32 both land in an int property. That is also
+/// why most Dapper code in the wild uses mutable DTOs rather than records --
+/// not style, but the mapper's actual contract.
+/// </summary>
+public sealed class AuthorQuoteRow
+{
+    public string Author { get; set; } = "";
+
+    public int QuoteCount { get; set; }
+}
+
+/// <summary>
+/// Day 12 task 2, part 2 -- a deliberately WIDE row, for the half of the
+/// EF-vs-Dapper comparison where materialization is meant to dominate.
+///
+/// Settable properties for the same reason AuthorQuoteRow has them: Dapper's
+/// constructor mapping matches parameter types exactly and will not coerce,
+/// while its property mapping will. Both the EF and the Dapper endpoint
+/// project into this same type, so neither side gains an advantage from a
+/// different object shape.
+/// </summary>
+public sealed class QuoteWideRow
+{
+    public int Id { get; set; }
+
+    public string Author { get; set; } = "";
+
+    public string Text { get; set; } = "";
+
+    public string? CreatedByUserId { get; set; }
 }
