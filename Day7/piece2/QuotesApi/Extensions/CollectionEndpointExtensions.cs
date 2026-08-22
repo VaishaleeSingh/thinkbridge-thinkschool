@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using QuotesApi.Models;
+using QuotesApi.Queries;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
 
@@ -55,10 +56,23 @@ public static class CollectionEndpointExtensions
                 collection);
         }).RequireAuthorization("can-edit-collections");
 
-        // GET /api/collections -- every collection the caller owns, with
-        // its items. Needs the collections.read scope.
+        // ---------------------------------------------------------------
+        // Day 12 -- READ PATH. Both GETs take ICollectionQueries, not
+        // ICollectionRepository.
+        //
+        // That is the visible half of the CQRS-lite split: a reader of this
+        // file can tell which endpoints command and which query purely from
+        // the dependency each one asks for. The write endpoints below still
+        // take ICollectionRepository, because they must load the real
+        // Collection aggregate to let its methods enforce the invariants.
+        // ---------------------------------------------------------------
+
+        // GET /api/collections -- rows for the "my collections" list screen:
+        // name, quote count, last-changed. Deliberately NOT the quotes
+        // themselves; the list screen does not render them, so fetching them
+        // would be over-fetching. Needs the collections.read scope.
         group.MapGet("/", async (
-            ICollectionRepository repository,
+            ICollectionQueries queries,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
@@ -67,18 +81,24 @@ public static class CollectionEndpointExtensions
                 ?? throw new InvalidOperationException(
                     "Authenticated request had no caller id claim.");
 
-            var collections = await repository.ListByOwnerAsync(ownerId, cancellationToken);
+            var collections = await queries.ListByOwnerAsync(ownerId, cancellationToken);
 
             return Results.Ok(collections);
         }).RequireAuthorization("can-read-collections");
 
-        // GET /api/collections/{id} -- needs the collections.read scope.
+        // GET /api/collections/{id} -- the detail screen: the collection plus
+        // its quotes, each with when it was added to THIS collection.
+        //
+        // This used to return the Collection aggregate itself, which meant a
+        // read was serialising a write model: private setters, an Items list
+        // of bare QuoteIds the client cannot render, and no quote text at all.
+        // Needs the collections.read scope.
         group.MapGet("/{id:int}", async (
             int id,
-            ICollectionRepository repository,
+            ICollectionQueries queries,
             CancellationToken cancellationToken) =>
         {
-            var collection = await repository.GetByIdAsync(id, cancellationToken);
+            var collection = await queries.GetDetailAsync(id, cancellationToken);
 
             return collection is null
                 ? Results.NotFound()
