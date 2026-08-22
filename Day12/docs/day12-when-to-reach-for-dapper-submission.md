@@ -2,9 +2,7 @@
 
 ## GitHub link
 
-https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day12-when-to-reach-for-dapper/Day12
-
-(Replace with the pull request URL once opened.)
+https://github.com/thinkbridge-thinkschool/VaishaleeSingh/pull/35
 
 ## The headline: there is a crossover, and I measured both sides of it
 
