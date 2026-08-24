@@ -1,0 +1,105 @@
+@use 'mixins' as *;
+
+// The <dialog> element itself is the backdrop area: full viewport, transparent,
+// with the visible panel as its child. Every one of these resets undoes a UA
+// default that would otherwise show through (a 2px inset border, a white
+// background, and a max-width/max-height that centres a box of its own).
+.dialog {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+
+  margin: 0;
+  padding: var(--space-4);
+  border: 0;
+  background: transparent;
+  color: inherit;
+
+  // Only applies while open; a closed <dialog> is display: none regardless.
+  display: flex;
+  // flex-end on mobile: a sheet rising from the bottom of a phone is reachable
+  // with a thumb, where a vertically centred dialog is not.
+  align-items: flex-end;
+  justify-content: center;
+
+  @include sm {
+    align-items: center;
+  }
+
+  &:not([open]) {
+    display: none;
+  }
+}
+
+.dialog::backdrop {
+  // Two declarations: the first is the floor for any engine that does not
+  // inherit custom properties into ::backdrop, the second is the themed value
+  // every current engine uses. Without the fallback a dialog could open over an
+  // undimmed page.
+  background: rgb(0 0 0 / 0.5);
+  background: var(--color-overlay);
+  animation: fade-in var(--duration-fast) var(--ease-out) both;
+}
+
+.dialog__panel {
+  @include surface;
+
+  width: 100%;
+  max-width: 34rem;
+
+  // Never taller than the viewport, and its own scroll container if the content
+  // is long -- a dialog whose buttons are below the fold cannot be dismissed.
+  max-height: min(85dvh, 44rem);
+  display: flex;
+  flex-direction: column;
+
+  box-shadow: var(--shadow-lg);
+  animation: fade-in-up var(--duration-base) var(--ease-out) both;
+}
+
+.dialog--sm .dialog__panel {
+  max-width: 26rem;
+}
+
+.dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dialog__title {
+  font-size: var(--text-lg);
+  min-width: 0;
+}
+
+.dialog__body {
+  padding: var(--space-5);
+  overflow-y: auto;
+}
+
+.dialog__footer {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5) var(--space-5);
+
+  &:empty {
+    display: none;
+  }
+
+  // Stacked on a phone with the primary action on top (column-reverse over
+  // source order that puts cancel first), side by side and right-aligned once
+  // there is room.
+  @include sm {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+}

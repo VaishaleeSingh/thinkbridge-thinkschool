@@ -1,0 +1,76 @@
+// =============================================================================
+// Mixins. Deliberately few: three breakpoints, a focus ring, a surface, and a
+// truncation helper. Everything else is a token.
+//
+// The breakpoints are min-width only, because the whole stylesheet is written
+// mobile-first: the base rules are the phone layout, and a breakpoint only ever
+// adds to them. A max-width breakpoint anywhere here would mean some rule was
+// written desktop-first and is being undone for small screens, which is the
+// pattern this file exists to avoid.
+// =============================================================================
+
+// 40rem / 640px -- the point where two cards fit side by side.
+@mixin sm {
+  @media (min-width: 40rem) {
+    @content;
+  }
+}
+
+// 48rem / 768px -- tablet. Navigation stops needing to wrap.
+@mixin md {
+  @media (min-width: 48rem) {
+    @content;
+  }
+}
+
+// 64rem / 1024px -- laptop. Three columns, and sidebars become affordable.
+@mixin lg {
+  @media (min-width: 64rem) {
+    @content;
+  }
+}
+
+/// A visible, consistent focus ring on any interactive element.
+///
+/// :focus-visible rather than :focus, so a mouse click does not leave a ring
+/// behind while keyboard navigation still shows one. Both a ring and an offset,
+/// so the indicator survives on top of a coloured button as well as on cream.
+@mixin focus-ring($color: var(--color-primary-ring)) {
+  &:focus-visible {
+    outline: 3px solid #{$color};
+    outline-offset: 2px;
+  }
+}
+
+/// The standard white card surface. Used by the shared card, the modal, and the
+/// form panels -- one definition, so they cannot drift apart.
+@mixin surface {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/// Clamp text to a number of lines. Long quotes and long collection names are
+/// both real -- the API allows 1000 and 80 characters respectively -- so every
+/// place they are rendered in a fixed-height context needs this rather than
+/// hoping the content is short.
+@mixin clamp-lines($lines: 2) {
+  display: -webkit-box;
+  -webkit-line-clamp: $lines;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/// Hide visually, keep for screen readers.
+@mixin visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

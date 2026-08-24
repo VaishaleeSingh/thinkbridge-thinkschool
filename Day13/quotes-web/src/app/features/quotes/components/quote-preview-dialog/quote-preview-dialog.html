@@ -1,0 +1,27 @@
+<app-modal [open]="open()" title="Quote" (closed)="closed.emit()">
+  @if (quote(); as selectedQuote) {
+    <article class="preview-banner">
+      <div
+        class="preview-banner__art"
+        [style.background-image]="
+          'linear-gradient(145deg, rgb(10 18 36 / 58%), rgb(11 30 49 / 48%)), url(' +
+          backgroundImageUrl() +
+          ')'
+        "
+      >
+        <div class="preview-banner__panel">
+          <p class="preview-banner__text">{{ selectedQuote.text }}</p>
+          <p class="preview-banner__author">- {{ selectedQuote.author }}</p>
+        </div>
+      </div>
+    </article>
+  }
+
+  <ng-container ngProjectAs="[modalFooter]">
+    <app-button variant="secondary" (pressed)="closed.emit()">Close</app-button>
+
+    @if (canEdit() && quote(); as selectedQuote) {
+      <app-button (pressed)="editRequested.emit(selectedQuote)">Edit quote</app-button>
+    }
+  </ng-container>
+</app-modal>

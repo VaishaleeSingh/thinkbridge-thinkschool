@@ -1,0 +1,11 @@
+<ul class="grid">
+  @for (collection of collections(); track collection.id) {
+    <li class="grid__cell">
+      <app-collection-card
+        [collection]="collection"
+        [deleting]="deletingId() === collection.id"
+        (deleteRequested)="deleteRequested.emit($event)"
+      />
+    </li>
+  }
+</ul>

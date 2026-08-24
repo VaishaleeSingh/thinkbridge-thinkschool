@@ -1,0 +1,48 @@
+@use 'mixins' as *;
+
+.grid {
+  display: grid;
+  gap: var(--space-6);
+
+  // Mobile-first, and every column is minmax(0, 1fr) rather than 1fr: a grid
+  // track defaults to min-content as its floor, so `1fr` alone lets a card with
+  // a long unbroken string push the whole grid wider than the viewport. This is
+  // the single most common cause of horizontal page scroll.
+  grid-template-columns: minmax(0, 1fr);
+
+  @include sm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include lg {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.grid__cell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+
+  // Each entrance is staggered slightly so a page of cards arrives as a sequence
+  // rather than as a single block.
+  //
+  // The delay is capped, and the cap applies to EVERY card past the sixth rather
+  // than to none of them. Staggering only the first six left cards 7+ with no
+  // delay at all, so on a 24-per-page view they finished BEFORE the staggered
+  // ones -- the sequence ran backwards, visible in a screenshot taken
+  // mid-animation. A shared maximum keeps the order monotonic at any page size,
+  // and keeps the last card from lagging a second behind the first.
+  animation: fade-in-up var(--duration-base) var(--ease-out) both;
+
+  @for $index from 1 through 6 {
+    &:nth-child(#{$index}) {
+      animation-delay: #{($index - 1) * 25}ms;
+    }
+  }
+
+  &:nth-child(n + 7) {
+    animation-delay: 150ms;
+  }
+}

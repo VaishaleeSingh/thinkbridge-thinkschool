@@ -1,0 +1,23 @@
+<!--
+  role="alert" so the failure is announced immediately rather than politely:
+  unlike a loading message, an error is the one thing a user needs to hear about
+  before they try again.
+-->
+<div class="error" role="alert">
+  <div class="error__body">
+    <h3 class="error__title">{{ title() }}</h3>
+    <p class="error__message">{{ message() }}</p>
+  </div>
+
+  @if (retryable()) {
+    <app-button
+      variant="secondary"
+      size="sm"
+      [loading]="retrying()"
+      loadingLabel="Retrying…"
+      (pressed)="retry.emit()"
+    >
+      {{ retryLabel() }}
+    </app-button>
+  }
+</div>

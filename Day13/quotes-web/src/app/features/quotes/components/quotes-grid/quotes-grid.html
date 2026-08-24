@@ -1,0 +1,22 @@
+<!--
+  A <ul>, because this is a list: a screen reader announces "list, 12 items" and
+  can jump between them, which a div of divs does not offer.
+
+  track quote.id, not $index: tracking by index makes Angular reuse the DOM of
+  row 3 for whatever ends up at position 3 after a delete or a page change, which
+  is both slower and the reason a spinner can appear on the wrong card.
+-->
+<ul class="grid">
+  @for (row of rows(); track row.quote.id) {
+    <li class="grid__cell">
+      <app-quote-card
+        [quote]="row.quote"
+        [owned]="row.owned"
+        [deletable]="row.deletable"
+        [deleting]="deletingId() === row.quote.id"
+        (openRequested)="openRequested.emit($event)"
+        (deleteRequested)="deleteRequested.emit($event)"
+      />
+    </li>
+  }
+</ul>

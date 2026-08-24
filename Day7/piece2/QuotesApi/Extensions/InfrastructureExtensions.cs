@@ -35,10 +35,25 @@ public static class InfrastructureExtensions
         // Scoped -- one DbContext (and the repositories built on it) per
         // request. Sharing a DbContext across requests isn't thread-safe;
         // a shorter-than-request lifetime would just churn connections.
+        var defaultConnection =
+            configuration.GetConnectionString("DefaultConnection")
+            ?? "Data Source=quotes.db";
+
+        var configuredProvider = configuration["Database:Provider"];
+        var useSqlServer = string.Equals(configuredProvider, "SqlServer", StringComparison.OrdinalIgnoreCase)
+            || defaultConnection.Contains("Server=", StringComparison.OrdinalIgnoreCase)
+            || defaultConnection.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase);
+
         services.AddDbContext<QuotesDbContext>(options =>
-            options.UseSqlite(
-                configuration.GetConnectionString("DefaultConnection")
-                ?? "Data Source=quotes.db"));
+        {
+            if (useSqlServer)
+            {
+                options.UseSqlServer(defaultConnection);
+                return;
+            }
+
+            options.UseSqlite(defaultConnection);
+        });
 
         services.AddScoped<IQuoteRepository, QuoteRepository>();
         services.AddScoped<ICollectionRepository, CollectionRepository>();

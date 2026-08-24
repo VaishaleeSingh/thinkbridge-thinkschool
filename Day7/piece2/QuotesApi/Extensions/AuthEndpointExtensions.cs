@@ -2,13 +2,20 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using QuotesApi.Configuration;
 using QuotesApi.Data;
+using QuotesApi.Models;
 using QuotesApi.Services;
 
 namespace QuotesApi.Extensions;
 
 /// <summary>
-/// /api/auth/login, /refresh, and /logout -- the three endpoints that hand
-/// out and manage our own self-issued JWTs (the "CustomJwt" scheme).
+/// /api/auth/register, /login, /refresh, and /logout -- the endpoints that
+/// hand out and manage our own self-issued JWTs (the "CustomJwt" scheme).
+///
+/// Day 13 added /register. Until then this API could verify a password but
+/// had no way to set one: every user row in every environment had to be
+/// inserted by hand, which is workable for a CLI client and impossible for a
+/// sign-up screen. The Angular SPA added on Day 13 is the first client that
+/// needs an account it did not already have.
 ///
 /// These endpoints are deliberately NOT behind .RequireAuthorization():
 /// you can't be asked to prove who you are with a token in order to get
@@ -21,6 +28,103 @@ public static class AuthEndpointExtensions
         this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/auth");
+
+        // POST /api/auth/register -- create an account and return the same
+        // token pair a login would, so a new user is signed in immediately
+        // rather than being bounced to a login screen to retype what they
+        // just typed.
+        //
+        // Not behind .RequireAuthorization() for the same reason /login is
+        // not: the caller has no token yet, and getting one is the point.
+        group.MapPost("/register", async (
+            RegisterRequest request,
+            IAuthService authService,
+            IRefreshTokenService refreshTokenService,
+            QuotesDbContext db,
+            IClock clock,
+            IOptions<JwtOptions> jwtOptions,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = new Dictionary<string, string[]>();
+            var email = request.Email?.Trim() ?? string.Empty;
+
+            // Deliberately not a full RFC 5322 regex. The only thing this
+            // check can honestly establish is that the value is shaped like
+            // an address; whether it exists is a question only sending mail
+            // to it can answer, and this API does not send mail.
+            if (string.IsNullOrWhiteSpace(email) || !email.Contains('@') || email.StartsWith('@') || email.EndsWith('@'))
+                errors["email"] = new[] { "A valid email address is required." };
+            else if (email.Length > 256)
+                errors["email"] = new[] { "Email must be 256 characters or less." };
+
+            // A floor, not a policy. Length is the one password rule with
+            // evidence behind it; composition rules ("one capital, one
+            // symbol") mainly push people towards predictable substitutions.
+            if (string.IsNullOrEmpty(request.Password) || request.Password.Length < 8)
+                errors["password"] = new[] { "Password must be at least 8 characters." };
+            else if (request.Password.Length > 128)
+                errors["password"] = new[] { "Password must be 128 characters or less." };
+
+            if (errors.Count > 0)
+                return Results.ValidationProblem(errors);
+
+            // Checked here so the common case gets a clear 409 rather than a
+            // unique-index violation surfacing as a 500. The index on
+            // User.Email (see QuotesDbContext) is still what actually
+            // guarantees uniqueness -- two simultaneous registrations of the
+            // same address can both pass this check, and one of them must
+            // still fail.
+            //
+            // This does confirm to an anonymous caller that an address is
+            // registered. The alternative -- accepting the registration and
+            // saying nothing -- is worse here: it leaves a real user unable
+            // to sign in or to find out why. /login stays deliberately
+            // silent about which half of the pair was wrong.
+            var alreadyRegistered = await db.Users
+                .AnyAsync(u => u.Email == email, cancellationToken);
+
+            if (alreadyRegistered)
+            {
+                return Results.Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Email already registered",
+                    detail: "An account already exists for that email address.");
+            }
+
+            var user = new User
+            {
+                Email = email,
+
+                // The raw password never reaches the database, and is never
+                // logged. HashPassword is PasswordHasher<User> -- PBKDF2,
+                // salted, deliberately slow. See AuthService.
+                PasswordHash = authService.HashPassword(request.Password!),
+
+                // IClock rather than DateTime.UtcNow, so a test can pin the
+                // value instead of asserting something fuzzy about "now".
+                // .UtcDateTime because IClock speaks DateTimeOffset while
+                // User.CreatedAt is a DateTime -- the same conversion
+                // RefreshTokenService and AuthService already do.
+                CreatedAt = clock.UtcNow.UtcDateTime,
+            };
+
+            db.Users.Add(user);
+            await db.SaveChangesAsync(cancellationToken);
+
+            var accessToken = authService.GenerateAccessToken(user);
+            var refreshToken = await refreshTokenService.GenerateTokenAsync(
+                user.Id,
+                cancellationToken);
+
+            // Same source as /login and /refresh use, rather than a
+            // hand-copied constant -- see JwtOptions for what drifted the
+            // last time this number was written twice.
+            var expiresIn = (int)jwtOptions.Value.AccessTokenLifetime.TotalSeconds;
+
+            return Results.Json(
+                new LoginResponse(accessToken, refreshToken, expiresIn, "Bearer"),
+                statusCode: StatusCodes.Status201Created);
+        });
 
         // POST /api/auth/login -- trade an email + password for an access
         // token (short-lived, 15 min) and a refresh token (long-lived, 7
@@ -166,6 +270,14 @@ public static class AuthEndpointExtensions
         return Convert.ToBase64String(hash);
     }
 }
+
+/// <summary>
+/// Shape of the JSON body for POST /api/auth/register. Both nullable on
+/// purpose: a client can omit either field, and "missing" has to reach the
+/// endpoint as a validation failure naming the field rather than as a
+/// deserialisation error naming nothing.
+/// </summary>
+public record RegisterRequest(string? Email, string? Password);
 
 public record RefreshRequest(string RefreshToken);
 

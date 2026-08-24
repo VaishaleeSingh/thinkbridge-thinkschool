@@ -1,0 +1,60 @@
+<app-card padding="lg">
+  <h1 class="sign-in__heading">{{ heading() }}</h1>
+
+  <p class="sign-in__lead">
+    @if (isRegistering()) {
+      Accounts are created directly against the Quotes API.
+    } @else {
+      Sign in with the account you created against the Quotes API.
+    }
+  </p>
+
+  <!--
+    novalidate: the browser's own bubble validation would pre-empt the field
+    level messages this app renders, and cannot be styled or read consistently.
+    (ngSubmit) rather than a click handler, so Enter in either field submits.
+  -->
+  <form class="sign-in__form" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    @if (summaryMessage(); as message) {
+      <p class="sign-in__error" role="alert">{{ message }}</p>
+    }
+
+    <app-text-field
+      label="Email"
+      type="email"
+      autocomplete="email"
+      placeholder="you@example.com"
+      [control]="form.controls.email"
+    />
+
+    <app-text-field
+      label="Password"
+      type="password"
+      [autocomplete]="isRegistering() ? 'new-password' : 'current-password'"
+      [hint]="passwordHint()"
+      [control]="form.controls.password"
+    />
+
+    <app-button
+      type="submit"
+      [fullWidth]="true"
+      [loading]="submitting()"
+      [loadingLabel]="submitBusyLabel()"
+    >
+      {{ submitLabel() }}
+    </app-button>
+  </form>
+
+  <p class="sign-in__switch">
+    {{ switchPrompt() }}
+
+    <!--
+      A real <button>, not a link: it changes the state of this page rather than
+      navigating anywhere, and an <a href="#"> that does not navigate is a
+      keyboard and screen-reader trap.
+    -->
+    <button type="button" class="sign-in__switch-button" (click)="switchMode()">
+      {{ switchAction() }}
+    </button>
+  </p>
+</app-card>

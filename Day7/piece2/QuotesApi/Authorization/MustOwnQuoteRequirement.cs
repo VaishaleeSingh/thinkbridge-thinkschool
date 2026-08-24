@@ -37,16 +37,6 @@ public class MustOwnQuoteHandler : AuthorizationHandler<MustOwnQuoteRequirement,
         MustOwnQuoteRequirement requirement,
         Quote resource)
     {
-        // Legacy quotes (created before this ownership column existed)
-        // have no recorded owner. By design, those quotes don't follow the
-        // ownership rule at all — only quotes created after Day 3 do — so
-        // there's nothing to check and the requirement passes automatically.
-        if (resource.CreatedByUserId is null)
-        {
-            context.Succeed(requirement);
-            return Task.CompletedTask;
-        }
-
         // Custom JWTs carry the user id under "sub"; depending on how the
         // token was validated, that can surface as the standard
         // ClaimTypes.NameIdentifier claim or still as the raw "sub" claim

@@ -1,0 +1,217 @@
+// =============================================================================
+// Design tokens -- the single place any colour, radius, shadow, spacing step or
+// type size is defined.
+//
+// They are CSS custom properties rather than Sass variables on purpose. Sass
+// variables are resolved at build time, so the dark theme below would have to
+// be a second compiled copy of every rule that used one. Custom properties are
+// resolved at runtime, which is what makes theming a matter of redefining ~20
+// values rather than duplicating a stylesheet. They also read as token names in
+// devtools instead of as hex values nobody can trace back to a decision.
+//
+// TWO THEMES, ONE SET OF NAMES
+//   light: cream ground, aqua accent
+//   dark:  black ground, aqua accent
+// Only the colour tokens are redefined for dark -- radii, spacing, type and
+// motion are theme-independent, so they are declared once and never repeated.
+//
+// Nothing else in this application should contain a literal colour. If a
+// component needs a shade that is not here, the shade belongs here first, in
+// both themes.
+// =============================================================================
+
+:root {
+  color-scheme: light;
+
+  // ---------------------------------------------------------------------------
+  // Aqua -- the accent, and the one thing both themes share. One hue, four
+  // steps, and that is the whole palette's colour story: anything interactive
+  // or selected is aqua, anything that is not, is not.
+  // ---------------------------------------------------------------------------
+  --color-primary: #0c7d7b; // 4.9:1 on cream -- AA for body text
+  --color-primary-hover: #096463;
+  --color-primary-active: #075352;
+  --color-primary-soft: #e3f2f1; // tinted fills: badges, hovered rows
+  --color-primary-ring: #0c7d7b; // focus ring
+  --color-on-primary: #ffffff; // text ON an aqua fill
+
+  // ---------------------------------------------------------------------------
+  // Cream -- the light base. The page is cream, cards are white. That one step
+  // of contrast is what separates content from ground, so neither needs a heavy
+  // border to be legible.
+  // ---------------------------------------------------------------------------
+  --color-background: #fbf7ef;
+  --color-background-sunken: #f4eee2; // wells: table headers, inset panels
+  --color-surface: #ffffff;
+  --color-surface-hover: #fdfbf7;
+
+  // ---------------------------------------------------------------------------
+  // Text. Near-black rather than black: pure black on cream reads as a harder
+  // edge than the rest of the palette.
+  // ---------------------------------------------------------------------------
+  --color-text: #1d2a2a; // 13.9:1 on cream
+  --color-text-muted: #5c6b6b; // 5.4:1 on cream -- still AA at body size
+
+  // ---------------------------------------------------------------------------
+  // Lines. Warm and low-contrast: a border here separates, it does not
+  // decorate.
+  // ---------------------------------------------------------------------------
+  --color-border: #e6dfd1;
+  --color-border-strong: #d3c9b5;
+
+  // ---------------------------------------------------------------------------
+  // Status. Meaning only -- never decoration, and never the ONLY signal,
+  // because colour alone is not accessible.
+  // ---------------------------------------------------------------------------
+  --color-success: #14804a;
+  --color-success-soft: #e4f2ea;
+  --color-danger: #a52a21;
+  --color-danger-hover: #8a221b;
+  --color-danger-soft: #fbeae8;
+  --color-warning: #96591a;
+  --color-warning-soft: #fbf0e2;
+
+  // Shadows are part of the theme too: on cream a soft grey drop reads as
+  // elevation, on black it is invisible. See the dark block for what replaces
+  // it there.
+  --shadow-sm: 0 1px 2px rgba(29, 42, 42, 0.06);
+  --shadow-md: 0 4px 14px rgba(29, 42, 42, 0.08);
+  --shadow-lg: 0 18px 44px rgba(29, 42, 42, 0.16);
+  --color-overlay: rgba(29, 42, 42, 0.38);
+
+  // ---------------------------------------------------------------------------
+  // Theme-independent tokens. Radii: three steps -- controls, cards, panels.
+  // ---------------------------------------------------------------------------
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  // Spacing -- a 4px scale. Every margin, padding and gap uses a step; nothing
+  // uses an arbitrary pixel value, which is what keeps rhythm consistent
+  // between components written at different times.
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  // Type. Avenir Next LT Pro first, then a geometric-humanist fallback chain,
+  // then the platform UI font -- no webfont is downloaded, so first paint never
+  // waits on the network and there is no invisible-text flash.
+  //
+  // The three fluid sizes use clamp() so headings shrink on a phone without a
+  // media query, and stop growing on a 1920px monitor rather than becoming
+  // billboards.
+  --font-sans:
+    'Avenir Next LT Pro', 'Avenir Next', 'Mulish', 'Segoe UI', system-ui, -apple-system,
+    sans-serif;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
+  --text-2xl: clamp(1.5rem, 1.25rem + 1.1vw, 2rem);
+  --text-3xl: clamp(1.875rem, 1.5rem + 1.7vw, 2.5rem);
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.55;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  // Motion. Two durations and one easing, so every transition in the app moves
+  // at one of two speeds instead of a dozen hand-picked ones. Components read
+  // these rather than hardcoding ms, which is also what makes the
+  // reduced-motion override in _animations.scss a single rule.
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --ease-out: cubic-bezier(0.2, 0, 0.2, 1);
+
+  // Layout
+  --layout-max-width: 76rem;
+  --header-height: 4rem;
+  --z-modal: 100;
+}
+
+// =============================================================================
+// Dark theme -- black ground, aqua accent.
+//
+// Declared twice, and both are needed:
+//
+//   1. @media (prefers-color-scheme: dark), scoped to
+//      :root:not([data-theme='light']) -- so someone whose OS is set to dark
+//      gets dark on first paint, before any script runs, UNLESS they have
+//      explicitly chosen light in this app.
+//   2. :root[data-theme='dark'] -- so the in-app toggle wins in both
+//      directions, including choosing dark on a machine set to light.
+//
+// Every value here also exists in :root above. Nothing is defined ONLY in a
+// theme block: a token that exists in one theme and not the other renders as
+// an unresolved var() -- which is to say, as nothing at all.
+// =============================================================================
+
+@mixin dark-palette {
+  color-scheme: dark;
+
+  // Aqua has to move to stay legible: #0c7d7b is a 1.9:1 whisper on black. The
+  // brighter step is 8.1:1 on #0b0f0f, and the fill it makes now needs DARK
+  // text on it rather than white -- which is exactly what --color-on-primary
+  // is for.
+  --color-primary: #3ccfc9;
+  --color-primary-hover: #6bdcd7;
+  --color-primary-active: #8ae7e3;
+  --color-primary-soft: #10302f;
+  --color-primary-ring: #3ccfc9;
+  --color-on-primary: #04211f;
+
+  // Black, but not #000: a true-black ground makes every border and shadow
+  // either invisible or harsh. #0b0f0f keeps a trace of the aqua hue, and the
+  // surface a step above it is what separates a card from the page -- the same
+  // job cream and white do in light, in the same direction.
+  --color-background: #0b0f0f;
+  --color-background-sunken: #070a0a;
+  --color-surface: #141b1b;
+  --color-surface-hover: #1a2322;
+
+  --color-text: #edf2f1; // 15.4:1 on the background
+  --color-text-muted: #9db0ae; // 7.6:1 -- muted, still comfortably AA
+
+  --color-border: #263130;
+  --color-border-strong: #3a4746;
+
+  // Status colours are lightened for the same reason the accent was: the light
+  // theme's #a52a21 danger is unreadable on black.
+  --color-success: #52c98a;
+  --color-success-soft: #10291d;
+  --color-danger: #f08a80;
+  --color-danger-hover: #f6a49c;
+  --color-danger-soft: #2e1815;
+  --color-warning: #dda75f;
+  --color-warning-soft: #2b2114;
+
+  // A drop shadow cannot show elevation on black -- there is nothing darker to
+  // cast. Depth comes from the surface being lighter than the ground instead,
+  // so the shadows stay only as a soft halo, and the modal overlay goes nearly
+  // opaque because a 38% scrim over black barely dims anything.
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 22px 48px rgba(0, 0, 0, 0.65);
+  --color-overlay: rgba(0, 0, 0, 0.68);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    @include dark-palette;
+  }
+}
+
+:root[data-theme='dark'] {
+  @include dark-palette;
+}

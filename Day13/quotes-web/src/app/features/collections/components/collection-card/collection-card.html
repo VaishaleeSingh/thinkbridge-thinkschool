@@ -1,0 +1,44 @@
+<app-card [interactive]="true">
+  <article class="collection">
+    <h2 class="collection__title">
+      <a class="collection__link" [routerLink]="['/collections', collection().id]">
+        {{ collection().name }}
+      </a>
+    </h2>
+
+    <dl class="collection__facts">
+      <div class="collection__fact">
+        <dt>Quotes</dt>
+        <dd>
+          <app-badge [tone]="collection().quoteCount >= maxItems ? 'warning' : 'primary'">
+            {{ collection().quoteCount }} of {{ maxItems }}
+          </app-badge>
+        </dd>
+      </div>
+
+      <div class="collection__fact">
+        <dt>Last added</dt>
+        <!--
+          The relative value is what a reader wants; the exact timestamp is on
+          the title attribute for when it is not.
+        -->
+        <dd [attr.title]="collection().lastAddedAt">
+          {{ collection().lastAddedAt | relativeTime }}
+        </dd>
+      </div>
+    </dl>
+
+    <footer class="collection__footer">
+      <app-button
+        variant="danger"
+        size="sm"
+        [loading]="deleting()"
+        loadingLabel="Deleting…"
+        [ariaLabel]="'Delete the collection ' + collection().name"
+        (pressed)="deleteRequested.emit(collection())"
+      >
+        Delete
+      </app-button>
+    </footer>
+  </article>
+</app-card>

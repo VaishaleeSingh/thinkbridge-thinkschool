@@ -1,0 +1,79 @@
+PASS  signed-out visit to / redirects to /sign-in
+PASS  deep link while signed out carries returnUrl  -- http://localhost:4200/sign-in?returnUrl=%2Fcollections
+PASS  submitting an empty form shows field errors
+PASS  an invalid form sends no request
+PASS  client-side email and length rules report before submitting
+PASS  a 401 from /login is shown as a session message, not as an HTTP string
+PASS  registering signs in and honours returnUrl
+PASS  an empty API response renders the empty state, not blank space
+PASS  the create dialog opens as a modal <dialog>
+PASS  focus moves into the dialog on open
+PASS  the name field caps input at the API's 80-character limit  -- 80 characters accepted
+PASS  an empty name is reported on the field, and nothing is sent
+PASS  creating a collection closes the dialog and shows the new card
+PASS  the header subtitle recomputes from the loaded list
+PASS  an empty collection shows its own empty state
+PASS  the picker lists candidate quotes  -- 18 candidates
+PASS  quotes already in the collection drop out of the picker  -- 18 -> 16
+PASS  the collection shows the added quotes
+PASS  each row shows when it was added to THIS collection
+PASS  the count badge recomputed
+PASS  removing asks first
+PASS  Escape closes a dialog
+PASS  cancelling removed nothing
+PASS  confirming removes exactly one quote
+PASS  the quotes page renders a full page of cards  -- 12 cards
+PASS  pagination reports the API totals
+PASS  Next pages forward
+PASS  Next disables itself on the last page
+PASS  the filter narrows the page client-side
+PASS  no matches is a distinct state from empty
+PASS  changing page size refetches and resets to page 1
+PASS  the quote form validates before submitting
+PASS  whitespace-only input is rejected the way the API would reject it
+PASS  the textarea counter tracks length  --  39 / 1000 
+PASS  creating a quote closes the dialog and shows it first
+PASS  a quote this user created is marked and offers delete
+PASS  a quote with no recorded creator is deletable but not labelled "yours"
+PASS  quotes created by someone else offer no delete control
+PASS  the total grew by one
+PASS  deleting removes it and the total shrinks
+PASS  the API's own ProblemDetails message is what the user sees
+PASS  retry re-runs the request that failed
+PASS  an empty page renders the empty state with a way forward
+PASS  an expired access token triggers exactly one refresh  -- 1 refreshes
+PASS  the original request is retried, so the user sees no interruption
+PASS  the toggle sets data-theme on <html>
+PASS  the dark theme repaints the page black  -- rgb(11, 15, 15)
+PASS  the theme choice survives a reload
+PASS  an unknown route renders inside the layout, with navigation intact
+PASS  no horizontal overflow: quotes @ 375  -- scrollWidth 375 vs clientWidth 375
+PASS  quotes grid is 1-up at 375px  -- 1 columns
+PASS  no horizontal overflow: collections @ 375  -- scrollWidth 375 vs clientWidth 375
+PASS  no horizontal overflow: dialog @ 375  -- scrollWidth 375 vs clientWidth 375
+PASS  no horizontal overflow: quotes @ 430  -- scrollWidth 430 vs clientWidth 430
+PASS  quotes grid is 1-up at 430px  -- 1 columns
+PASS  no horizontal overflow: collections @ 430  -- scrollWidth 430 vs clientWidth 430
+PASS  no horizontal overflow: dialog @ 430  -- scrollWidth 430 vs clientWidth 430
+PASS  no horizontal overflow: quotes @ 768  -- scrollWidth 768 vs clientWidth 768
+PASS  quotes grid is 2-up at 768px  -- 2 columns
+PASS  no horizontal overflow: collections @ 768  -- scrollWidth 768 vs clientWidth 768
+PASS  no horizontal overflow: dialog @ 768  -- scrollWidth 768 vs clientWidth 768
+PASS  no horizontal overflow: quotes @ 1024  -- scrollWidth 1024 vs clientWidth 1024
+PASS  quotes grid is 3-up at 1024px  -- 3 columns
+PASS  no horizontal overflow: collections @ 1024  -- scrollWidth 1024 vs clientWidth 1024
+PASS  no horizontal overflow: dialog @ 1024  -- scrollWidth 1024 vs clientWidth 1024
+PASS  no horizontal overflow: quotes @ 1440  -- scrollWidth 1440 vs clientWidth 1440
+PASS  quotes grid is 3-up at 1440px  -- 3 columns
+PASS  no horizontal overflow: collections @ 1440  -- scrollWidth 1440 vs clientWidth 1440
+PASS  no horizontal overflow: dialog @ 1440  -- scrollWidth 1440 vs clientWidth 1440
+PASS  no horizontal overflow: quotes @ 1920  -- scrollWidth 1920 vs clientWidth 1920
+PASS  quotes grid is 3-up at 1920px  -- 3 columns
+PASS  no horizontal overflow: collections @ 1920  -- scrollWidth 1920 vs clientWidth 1920
+PASS  no horizontal overflow: dialog @ 1920  -- scrollWidth 1920 vs clientWidth 1920
+PASS  the first tab stop is the skip link  -- Skip to content
+PASS  signing out clears the stored session
+PASS  a signed-out user cannot re-enter a protected route
+PASS  no unexpected console errors or unhandled exceptions during the whole run
+
+77/77 checks passed

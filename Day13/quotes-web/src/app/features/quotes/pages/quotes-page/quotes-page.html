@@ -1,0 +1,120 @@
+<section class="quotes-hero" aria-label="Quotes overview">
+  <div class="quotes-hero__content">
+    <p class="quotes-hero__eyebrow">Quote Library</p>
+    <h1 class="quotes-hero__title">Discover and curate meaningful quotes</h1>
+    <p class="quotes-hero__subtitle">
+      Explore your collection, organize ideas, and add new quotes in seconds.
+    </p>
+
+    <app-button (pressed)="openCreate()">Add new quote</app-button>
+  </div>
+</section>
+
+<app-quotes-filter-bar
+  [size]="store.size()"
+  [sizes]="pageSizes"
+  [fetchedCount]="store.fetchedCount()"
+  [matchCount]="store.matchCount()"
+  [isFiltering]="store.isFiltering()"
+  [disabled]="store.isLoading()"
+  (searchChange)="store.setSearch($event)"
+  (sizeChange)="store.setSize($event)"
+/>
+
+<!--
+  The four states, mutually exclusive by construction: each condition is a
+  computed() on the store (see its "view states" block), so there is no
+  combination of signals that renders two of these at once.
+-->
+<section class="quotes__results">
+  @if (store.showLoading()) {
+    <app-loader label="Loading quotes" [rows]="3" />
+  } @else if (store.showError()) {
+    @if (store.error(); as failure) {
+      <app-error-state
+        title="Could not load quotes"
+        [message]="failure.message"
+        [retrying]="store.isLoading()"
+        (retry)="store.load()"
+      />
+    }
+  } @else if (store.showEmpty()) {
+    <app-empty-state
+      title="No quotes yet"
+      description="The API has no quotes to show. Add the first one and it will appear here."
+    >
+      <app-button (pressed)="openCreate()">New quote</app-button>
+    </app-empty-state>
+  } @else if (store.showNoMatches()) {
+    <app-empty-state
+      title="Nothing on this page matches"
+      description="The filter only sees the quotes on the current page. Clear it, or try another page."
+    />
+  } @else {
+    <app-quotes-grid
+      [rows]="store.rows()"
+      [deletingId]="store.deletingId()"
+      (openRequested)="openPreview($event)"
+      (deleteRequested)="confirmDelete($event)"
+    />
+  }
+
+  <!--
+    Paging stays visible while filtering and while a page is in flight -- it is
+    how a user gets to the quotes the client-side filter cannot see. Hidden only
+    when there is genuinely nothing to page through.
+  -->
+  @if (!store.showEmpty() && !store.showError()) {
+    <app-pagination
+      [page]="store.page()"
+      [size]="store.size()"
+      [total]="store.total()"
+      [busy]="store.isLoading()"
+      (pageChange)="store.goToPage($event)"
+    />
+  }
+</section>
+
+<app-quote-form-dialog
+  [open]="isCreateOpen()"
+  [quote]="null"
+  [submitting]="store.isCreating()"
+  [fieldErrors]="createFieldErrors()"
+  (submitted)="createQuote($event)"
+  (cancelled)="closeCreate()"
+/>
+
+<app-quote-preview-dialog
+  [open]="previewQuote() !== null"
+  [quote]="previewQuote()"
+  [canEdit]="previewCanEdit()"
+  (closed)="closePreview()"
+  (editRequested)="openEdit($event)"
+/>
+
+<app-quote-form-dialog
+  [open]="editingQuote() !== null"
+  [quote]="editingQuote()"
+  [submitting]="store.isUpdating()"
+  [fieldErrors]="editFieldErrors()"
+  (submitted)="updateQuote($event)"
+  (cancelled)="closeEdit()"
+/>
+
+@if (pendingDelete(); as quote) {
+  <app-confirm-dialog
+    [open]="true"
+    title="Delete this quote?"
+    [message]="
+      '“' +
+      quote.text +
+      '” by ' +
+      quote.author +
+      ' will be removed from the API. This cannot be undone.'
+    "
+    [busy]="store.deletingId() === quote.id"
+    confirmLabel="Delete quote"
+    (confirmed)="deleteConfirmed()"
+    (cancelled)="cancelDelete()"
+  />
+}

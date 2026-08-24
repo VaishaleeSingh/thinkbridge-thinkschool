@@ -1,0 +1,93 @@
+@use 'mixins' as *;
+
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+app-card {
+  display: block;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.quote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  border-radius: var(--radius-md);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  color: #fff;
+  padding: var(--space-4);
+}
+
+.quote__open {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-4);
+  width: 100%;
+  height: 100%;
+  padding: var(--space-4);
+  border: 0;
+  background: transparent;
+  color: #f8fbff;
+  text-align: left;
+  cursor: pointer;
+  border-radius: calc(var(--radius-md) - var(--space-2));
+}
+
+.quote__text {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: #f8fbff;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+
+  // The aqua rule does the work a pair of quotation-mark glyphs would, without
+  // the punctuation being read aloud or breaking in another locale.
+  padding-left: var(--space-4);
+  border-left: 3px solid rgb(140 230 255 / 92%);
+
+  // Six lines is enough for the API's 1000-character maximum to be readable
+  // without one long quote making its card three times the height of its
+  // neighbours in the same grid row.
+  @include clamp-lines(6);
+}
+
+.quote__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+
+  // Pushes the footer to the bottom of a stretched grid cell, so every card in a
+  // row has its author on the same line regardless of quote length.
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid rgb(237 247 255 / 28%);
+}
+
+.quote__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.quote__author {
+  font-style: normal;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  color: rgb(236 245 255 / 94%);
+}

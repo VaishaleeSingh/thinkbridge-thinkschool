@@ -1,0 +1,19 @@
+<div class="loader" role="status" [attr.aria-label]="label()">
+  @switch (variant()) {
+    @case ('spinner') {
+      <span class="loader__spinner" aria-hidden="true"></span>
+      <span class="loader__text">{{ label() }}…</span>
+    }
+    @default {
+      <ul class="loader__skeletons" aria-hidden="true">
+        @for (index of rowIndexes(); track index) {
+          <li class="loader__skeleton">
+            <span class="loader__line loader__line--title"></span>
+            <span class="loader__line loader__line--body"></span>
+            <span class="loader__line loader__line--meta"></span>
+          </li>
+        }
+      </ul>
+    }
+  }
+</div>

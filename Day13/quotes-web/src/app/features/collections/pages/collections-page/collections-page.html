@@ -1,0 +1,73 @@
+<app-page-header
+  title="Collections"
+  [subtitle]="subtitle()"
+>
+  <app-button (pressed)="openCreate()">New collection</app-button>
+</app-page-header>
+
+<!--
+  A create or delete that failed. Same placement and reasoning as the one on
+  quotes-page: separate from the load error below, and rendered above the list
+  rather than instead of it, because the list is still correct and one action
+  did not happen.
+-->
+@if (store.actionError(); as failure) {
+  <div class="collections__action-error">
+    <app-error-state
+      title="That action did not work"
+      [message]="failure.message"
+      [retryable]="false"
+    />
+  </div>
+}
+
+<section class="collections__results">
+  @if (store.showLoading()) {
+    <app-loader label="Loading collections" [rows]="3" />
+  } @else if (store.showError()) {
+    @if (store.error(); as failure) {
+      <app-error-state
+        title="Could not load collections"
+        [message]="failure.message"
+        (retry)="store.load()"
+      />
+    }
+  } @else if (store.showEmpty()) {
+    <app-empty-state
+      title="No collections yet"
+      description="A collection is a named group of quotes from the API. Create one and start adding to it."
+    >
+      <app-button (pressed)="openCreate()">New collection</app-button>
+    </app-empty-state>
+  } @else {
+    <app-collections-grid
+      [collections]="store.items()"
+      [deletingId]="store.deletingId()"
+      (deleteRequested)="confirmDelete($event)"
+    />
+  }
+</section>
+
+<app-collection-form-dialog
+  [open]="isCreateOpen()"
+  [submitting]="store.isCreating()"
+  [fieldErrors]="createFieldErrors()"
+  (submitted)="createCollection($event)"
+  (cancelled)="closeCreate()"
+/>
+
+@if (pendingDelete(); as collection) {
+  <app-confirm-dialog
+    [open]="true"
+    title="Delete this collection?"
+    [message]="
+      '“' + collection.name + '” and its ' + collection.quoteCount +
+      ' quote' + (collection.quoteCount === 1 ? '' : 's') +
+      ' will be removed. The quotes themselves are not deleted. This cannot be undone.'
+    "
+    [busy]="store.deletingId() === collection.id"
+    confirmLabel="Delete collection"
+    (confirmed)="deleteConfirmed()"
+    (cancelled)="cancelDelete()"
+  />
+}

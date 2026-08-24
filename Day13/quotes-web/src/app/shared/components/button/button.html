@@ -1,0 +1,26 @@
+<button
+  class="btn"
+  [class.btn--primary]="variant() === 'primary'"
+  [class.btn--secondary]="variant() === 'secondary'"
+  [class.btn--ghost]="variant() === 'ghost'"
+  [class.btn--danger]="variant() === 'danger'"
+  [class.btn--sm]="size() === 'sm'"
+  [class.btn--loading]="loading()"
+  [attr.type]="type()"
+  [disabled]="isDisabled()"
+  [attr.aria-busy]="loading() ? 'true' : null"
+  [attr.aria-label]="ariaLabel()"
+  (click)="onClick()"
+>
+  @if (loading()) {
+    <span class="btn__spinner" aria-hidden="true"></span>
+  }
+
+  <span class="btn__label">
+    @if (loading() && loadingLabel()) {
+      {{ loadingLabel() }}
+    } @else {
+      <ng-content />
+    }
+  </span>
+</button>

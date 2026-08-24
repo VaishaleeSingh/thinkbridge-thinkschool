@@ -1,0 +1,24 @@
+<app-modal
+  [open]="open()"
+  [title]="title()"
+  [busy]="busy()"
+  size="sm"
+  (closed)="cancelled.emit()"
+>
+  <p class="confirm__message">{{ message() }}</p>
+
+  <ng-container ngProjectAs="[modalFooter]">
+    <app-button variant="secondary" [disabled]="busy()" (pressed)="cancelled.emit()">
+      {{ cancelLabel() }}
+    </app-button>
+
+    <app-button
+      variant="danger"
+      [loading]="busy()"
+      loadingLabel="Deleting…"
+      (pressed)="confirmed.emit()"
+    >
+      {{ confirmLabel() }}
+    </app-button>
+  </ng-container>
+</app-modal>

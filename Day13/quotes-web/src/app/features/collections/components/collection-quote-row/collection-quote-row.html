@@ -1,0 +1,22 @@
+<article class="row">
+  <div class="row__body">
+    <blockquote class="row__text">{{ quote().text }}</blockquote>
+
+    <p class="row__meta">
+      <cite class="row__author">{{ quote().author }}</cite>
+      <span class="row__separator" aria-hidden="true">·</span>
+      <span [attr.title]="quote().addedAt">added {{ quote().addedAt | relativeTime }}</span>
+    </p>
+  </div>
+
+  <app-button
+    variant="ghost"
+    size="sm"
+    [loading]="removing()"
+    loadingLabel="Removing…"
+    [ariaLabel]="'Remove the quote by ' + quote().author + ' from this collection'"
+    (pressed)="removeRequested.emit(quote())"
+  >
+    Remove
+  </app-button>
+</article>

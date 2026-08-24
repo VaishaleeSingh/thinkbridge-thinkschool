@@ -1,0 +1,60 @@
+@use 'mixins' as *;
+
+:host {
+  display: block;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+
+  transition: border-color var(--duration-fast) var(--ease-out);
+
+  &:hover {
+    border-color: var(--color-primary-ring);
+  }
+
+  // Text and control side by side once there is room for both; stacked on a
+  // phone so neither is squeezed to a few characters wide.
+  @include md {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-5);
+  }
+}
+
+.row__body {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.row__text {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+
+  @include clamp-lines(3);
+}
+
+.row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.row__author {
+  font-style: normal;
+  font-weight: var(--weight-semibold);
+}

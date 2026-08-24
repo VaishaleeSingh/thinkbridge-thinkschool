@@ -1,0 +1,75 @@
+// =============================================================================
+// Animations.
+//
+// Four keyframes, and that is the whole set. Each one exists because a specific
+// state change would otherwise appear instantly with no indication of where it
+// came from -- a modal that pops into place, a list that replaces itself between
+// frames, a skeleton that does not read as "loading".
+//
+// Nothing here animates on a loop except the two loading indicators, and both
+// stop existing the moment their request resolves.
+// =============================================================================
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.u-animate-in {
+  animation: fade-in-up var(--duration-base) var(--ease-out) both;
+}
+
+// =============================================================================
+// Reduced motion.
+//
+// One override rather than a `@media (prefers-reduced-motion)` block inside
+// every component, which is only possible because every component animates via
+// the two duration tokens instead of its own hardcoded ms values.
+//
+// Durations are collapsed to 1ms rather than 0 and animations are cut to a
+// single iteration, rather than `animation: none`: an element whose entrance
+// animation starts at opacity 0 would stay invisible forever if the animation
+// were removed outright. This way the end state is reached immediately, which
+// is what "reduced motion" should mean -- the change still happens, it just
+// does not travel.
+// =============================================================================
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

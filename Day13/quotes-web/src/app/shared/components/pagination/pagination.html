@@ -1,0 +1,37 @@
+<!--
+  <nav> with a name, so it is listed as a landmark rather than as two loose
+  buttons. aria-live on the status line means a screen reader hears "showing 11
+  to 20 of 42" after paging, which is the only confirmation that anything
+  happened for someone not seeing the list redraw.
+-->
+<nav class="pagination" aria-label="Quote pages">
+  <p class="pagination__status" aria-live="polite">
+    @if (total() === 0) {
+      No quotes
+    } @else {
+      Showing {{ firstOnPage() }}–{{ lastOnPage() }} of {{ total() }}
+    }
+  </p>
+
+  <div class="pagination__controls">
+    <app-button
+      variant="secondary"
+      size="sm"
+      [disabled]="!hasPrevious() || busy()"
+      (pressed)="goToPrevious()"
+    >
+      Previous
+    </app-button>
+
+    <span class="pagination__page">Page {{ page() }} of {{ totalPages() }}</span>
+
+    <app-button
+      variant="secondary"
+      size="sm"
+      [disabled]="!hasNext() || busy()"
+      (pressed)="goToNext()"
+    >
+      Next
+    </app-button>
+  </div>
+</nav>

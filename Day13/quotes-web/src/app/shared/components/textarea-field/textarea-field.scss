@@ -1,0 +1,26 @@
+@use 'field' as *;
+
+@include field-styles;
+
+.field__footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.field__messages {
+  min-width: 0;
+}
+
+.field__counter {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.field__counter--warn {
+  color: var(--color-warning);
+  font-weight: var(--weight-semibold);
+}

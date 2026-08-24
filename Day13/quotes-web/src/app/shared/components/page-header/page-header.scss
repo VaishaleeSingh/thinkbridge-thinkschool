@@ -1,0 +1,38 @@
+@use 'mixins' as *;
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+
+  // Mobile-first: title above its actions, so neither is squeezed. Side by side
+  // from 640px, where a full-width action button would look stranded.
+  @include sm {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+.page-header__text {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.page-header__subtitle {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  max-width: 60ch;
+}
+
+.page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+
+  &:empty {
+    display: none;
+  }
+}

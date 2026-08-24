@@ -1,0 +1,288 @@
+import { Injectable, computed, inject, signal } from '@angular/core';
+
+import { ApiFailure, toApiFailure } from '../../../core/models/api-failure';
+import { CreateQuoteRequest, Quote, UpdateQuoteRequest } from '../../../core/models/quote';
+import { AuthStore } from '../../../core/services/auth-store';
+import { QuotesApi } from '../../../core/services/quotes-api';
+import { QuoteRow } from '../models/quote-row';
+
+/** Page sizes offered in the UI. All within the API's Pagination:MaxPageSize of 100. */
+export const QUOTE_PAGE_SIZES = [6, 12, 24, 48] as const;
+
+/**
+ * Everything the quotes screen knows, as signals.
+ *
+ * WHY A STORE AND NOT STATE IN THE PAGE COMPONENT: three components need the
+ * same facts -- the grid needs the items, the pagination needs page/size/total,
+ * the filter bar needs the query -- and a page component holding all of it would
+ * have to pass every piece down and every change back up. Here the page composes
+ * the components, and each reads what it needs.
+ *
+ * WHY IT IS NOT `providedIn: 'root'`: it is provided by the quotes route (see
+ * app.routes.ts), so leaving the feature destroys it. A root-provided store would
+ * keep the previous user's quotes in memory after sign-out and show them for a
+ * frame on the next sign-in.
+ *
+ * SIGNAL DISCIPLINE, which is the point of the exercise:
+ *   - `signal()` for the five facts that are actually pushed in: the fetched
+ *     page, the paging parameters, the query, and the in-flight/failed markers.
+ *   - `computed()` for everything derivable from them -- the filtered list, the
+ *     counts, and each of the four view states. None of these is a signal that
+ *     someone has to remember to update.
+ *   - `effect()` NOWHERE in this file. Fetching in an effect that reads page and
+ *     size looks tidy and is a trap: it re-runs on any read signal changing, so a
+ *     size change fires two requests, and there is no way to await it or to
+ *     cancel the loser. Loading is triggered explicitly by the four methods at
+ *     the bottom, each of which is a thing the user did.
+ */
+@Injectable()
+export class QuotesStore {
+  private readonly api = inject(QuotesApi);
+  private readonly authStore = inject(AuthStore);
+
+  // --- Raw state -------------------------------------------------------------
+  private readonly quotes = signal<readonly Quote[]>([]);
+  private readonly totalCount = signal(0);
+  private readonly pageNumber = signal(1);
+  private readonly pageSize = signal<number>(12);
+  private readonly query = signal('');
+
+  private readonly loading = signal(false);
+  private readonly failure = signal<ApiFailure | null>(null);
+  private readonly creating = signal(false);
+  private readonly updating = signal(false);
+  private readonly deletingQuoteId = signal<number | null>(null);
+
+  // --- Readonly projections --------------------------------------------------
+  readonly page = this.pageNumber.asReadonly();
+  readonly size = this.pageSize.asReadonly();
+  readonly total = this.totalCount.asReadonly();
+  readonly search = this.query.asReadonly();
+  readonly isLoading = this.loading.asReadonly();
+  readonly error = this.failure.asReadonly();
+  readonly isCreating = this.creating.asReadonly();
+  readonly isUpdating = this.updating.asReadonly();
+  readonly deletingId = this.deletingQuoteId.asReadonly();
+
+  /**
+   * The rows to render: the fetched page, narrowed by the query.
+   *
+   * The filter is CLIENT-SIDE and only sees the current page, because the API has
+   * no search parameter -- GET /api/quotes takes page and size and nothing else.
+   * That is a real limitation and the UI says so rather than implying a
+   * whole-collection search (see the filter bar's hint). The alternative, fetching
+   * everything to filter it here, would be a lie about what the endpoint is for.
+   */
+  readonly items = computed(() => {
+    const term = this.query().trim().toLowerCase();
+    const page = this.quotes();
+
+    if (!term) {
+      return page;
+    }
+
+    return page.filter(
+      (quote) =>
+        quote.author.toLowerCase().includes(term) || quote.text.toLowerCase().includes(term),
+    );
+  });
+
+  /**
+   * The items paired with the two things a card cannot work out for itself.
+   *
+   * The alternative -- passing the signed-in user id down to every card and
+   * repeating `quote.createdByUserId === null || ... === userId` in the template
+   * -- would put an authorization rule in a presentation component, in as many
+   * copies as there are places that render a quote.
+   */
+  readonly rows = computed<readonly QuoteRow[]>(() =>
+    this.items().map((quote) => ({
+      quote,
+      owned: this.isOwnedByCaller(quote),
+      deletable: this.canDelete(quote),
+    })),
+  );
+
+  readonly isFiltering = computed(() => this.query().trim().length > 0);
+  readonly fetchedCount = computed(() => this.quotes().length);
+  readonly matchCount = computed(() => this.items().length);
+
+  /**
+   * The four view states, derived rather than tracked. A separate `isEmpty`
+   * signal set by hand in load() is the classic source of a page that shows an
+   * empty state and a list at the same time.
+   */
+  readonly showLoading = computed(() => this.loading() && this.quotes().length === 0);
+  readonly showError = computed(() => !this.loading() && this.failure() !== null);
+  readonly showEmpty = computed(
+    () => !this.loading() && this.failure() === null && this.quotes().length === 0,
+  );
+  readonly showNoMatches = computed(
+    () => !this.showLoading() && this.quotes().length > 0 && this.matchCount() === 0,
+  );
+
+  /**
+   * True while a page other than the first render is loading -- used to disable
+   * paging controls without replacing the list with a skeleton, so the content
+   * does not flash out and back in when moving between pages.
+   */
+  readonly isRefreshing = computed(() => this.loading() && this.quotes().length > 0);
+
+  /**
+   * Whether the signed-in user may delete a given quote.
+   *
+   * Mirrors the API's strict ownership rule (MustOwnQuoteHandler): only the
+   * creator may delete it. Getting this wrong shows a delete button that always
+   * 403s -- it cannot grant anything, because the API decides.
+   */
+  canDelete(quote: Quote): boolean {
+    return this.isOwnedByCaller(quote);
+  }
+
+  /**
+   * Whether this user actually WROTE it -- a narrower question than canDelete,
+   * and the one the "yours" badge answers. A quote with no recorded creator is
+   * deletable by anyone and authored by nobody in particular, so it gets the
+   * control and not the badge.
+   */
+  isOwnedByCaller(quote: Quote): boolean {
+    return quote.createdByUserId !== null && quote.createdByUserId === this.authStore.userId();
+  }
+
+  // --- Commands --------------------------------------------------------------
+
+  /** Fetches the current page. Every other method that changes state calls this. */
+  async load(): Promise<void> {
+    this.loading.set(true);
+    this.failure.set(null);
+
+    try {
+      const result = await this.api.getPage(this.pageNumber(), this.pageSize());
+
+      this.quotes.set(result.items);
+      this.totalCount.set(result.total);
+    } catch (error) {
+      this.failure.set(toApiFailure(error));
+
+      // Cleared on failure on purpose: leaving the previous page's rows on
+      // screen under an error message claims data that may no longer be true.
+      this.quotes.set([]);
+      this.totalCount.set(0);
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async goToPage(page: number): Promise<void> {
+    if (page === this.pageNumber() || page < 1) {
+      return;
+    }
+
+    this.pageNumber.set(page);
+    await this.load();
+  }
+
+  async setSize(size: number): Promise<void> {
+    if (size === this.pageSize()) {
+      return;
+    }
+
+    this.pageSize.set(size);
+
+    // Back to page 1: page 4 of a 6-per-page list does not exist at 48 per page,
+    // and asking for it returns an empty list that looks like a bug.
+    this.pageNumber.set(1);
+    await this.load();
+  }
+
+  setSearch(term: string): void {
+    // No request: the filter is client-side over the page already fetched.
+    this.query.set(term);
+  }
+
+  /**
+   * Creates a quote and returns the field errors the API reported, so the form
+   * can attach them to its controls. An empty object means it worked.
+   *
+   * Returning errors rather than throwing: a validation failure is an ordinary
+   * outcome of a form submission, not an exception, and the caller has to handle
+   * it either way.
+   */
+  async create(request: CreateQuoteRequest): Promise<Readonly<Record<string, readonly string[]>>> {
+    this.creating.set(true);
+
+    try {
+      await this.api.create(request);
+
+      // Straight to page 1 and re-fetch, rather than pushing the created quote
+      // into the current page's array. The list is server-paged and server
+      // ordered, so a locally inserted row would sit in a position the API would
+      // not have put it in, and the page's `total` would be stale.
+      this.pageNumber.set(1);
+      this.query.set('');
+      await this.load();
+
+      return {};
+    } catch (error) {
+      const failure = toApiFailure(error);
+
+      // A validation problem belongs on the form's fields. Anything else (a 401,
+      // a 500) is a page-level failure and is surfaced as one.
+      if (Object.keys(failure.fieldErrors).length > 0) {
+        return failure.fieldErrors;
+      }
+
+      this.failure.set(failure);
+      return {};
+    } finally {
+      this.creating.set(false);
+    }
+  }
+
+  /** Edits a quote and returns API field errors keyed by field name, if any. */
+  async update(
+    id: number,
+    request: UpdateQuoteRequest,
+  ): Promise<Readonly<Record<string, readonly string[]>>> {
+    this.updating.set(true);
+
+    try {
+      await this.api.update(id, request);
+      await this.load();
+      return {};
+    } catch (error) {
+      const failure = toApiFailure(error);
+
+      if (Object.keys(failure.fieldErrors).length > 0) {
+        return failure.fieldErrors;
+      }
+
+      this.failure.set(failure);
+      return {};
+    } finally {
+      this.updating.set(false);
+    }
+  }
+
+  /** Deletes a quote, then re-reads the page it was on. */
+  async remove(id: number): Promise<void> {
+    this.deletingQuoteId.set(id);
+
+    try {
+      await this.api.delete(id);
+
+      // Deleting the only row on the last page would otherwise leave the user
+      // looking at an empty page 3 of 2.
+      const wasLastOnPage = this.quotes().length === 1 && this.pageNumber() > 1;
+      if (wasLastOnPage) {
+        this.pageNumber.update((page) => page - 1);
+      }
+
+      await this.load();
+    } catch (error) {
+      this.failure.set(toApiFailure(error));
+    } finally {
+      this.deletingQuoteId.set(null);
+    }
+  }
+}

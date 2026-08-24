@@ -1,0 +1,68 @@
+<app-modal [open]="open()" [busy]="adding()" title="Add a quote" (closed)="cancelled.emit()">
+  <div class="picker">
+    <app-text-field
+      label="Filter"
+      type="search"
+      placeholder="Author or text"
+      [control]="searchControl"
+      [hint]="'Room for ' + remainingSlots() + ' more in this collection.'"
+    />
+
+    @if (errorMessage(); as message) {
+      <p class="picker__error" role="alert">{{ message }}</p>
+    }
+
+    @if (loading()) {
+      <app-loader variant="spinner" label="Loading quotes" />
+    } @else if (quotes().length === 0) {
+      <app-empty-state
+        title="Nothing left to add"
+        description="Every quote on this page of the API is already in this collection, or the filter excluded them all."
+      />
+    } @else {
+      <p class="picker__select-hint">
+        Select one or more quotes with checkboxes, then add them together.
+      </p>
+
+      <ul class="picker__list">
+        @for (quote of quotes(); track quote.id) {
+          <li class="picker__item" (click)="toggleSelectionFromRow(quote.id)">
+            <label class="picker__check" [attr.for]="'quote-' + quote.id">
+              <input
+                [id]="'quote-' + quote.id"
+                type="checkbox"
+                [disabled]="adding()"
+                [checked]="isSelected(quote.id)"
+                (change)="toggleSelection(quote.id, $any($event.target).checked)"
+                (click)="onCheckboxClick($event)"
+              />
+            </label>
+
+            <div class="picker__text">
+              <p class="picker__quote">{{ quote.text }}</p>
+              <p class="picker__author">{{ quote.author }}</p>
+            </div>
+          </li>
+        }
+      </ul>
+
+      <div class="picker__batch-actions">
+        <app-button
+          size="sm"
+          [loading]="adding()"
+          loadingLabel="Adding selected…"
+          [disabled]="adding() || selectedCount() === 0"
+          (pressed)="addSelectedQuotes()"
+        >
+          Add selected ({{ selectedCount() }})
+        </app-button>
+      </div>
+    }
+  </div>
+
+  <ng-container ngProjectAs="[modalFooter]">
+    <app-button variant="secondary" [disabled]="adding()" (pressed)="cancelled.emit()">
+      Done
+    </app-button>
+  </ng-container>
+</app-modal>

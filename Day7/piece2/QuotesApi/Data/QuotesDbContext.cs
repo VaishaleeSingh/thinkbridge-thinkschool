@@ -48,6 +48,10 @@ public class QuotesDbContext : DbContext
         // covering-index task flagged.
         modelBuilder.Entity<Quote>(entity =>
         {
+            entity.Property(x => x.BackgroundImageUrl)
+                .IsRequired()
+                .HasMaxLength(500);
+
             entity.HasIndex(x => x.Author);
         });
 

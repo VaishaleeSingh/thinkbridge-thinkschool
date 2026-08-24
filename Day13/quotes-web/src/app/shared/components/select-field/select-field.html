@@ -1,0 +1,29 @@
+<div class="field">
+  <label class="field__label" [attr.for]="inputId">
+    <span>{{ label() }}</span>
+
+    @if (isRequired()) {
+      <span class="field__required" aria-hidden="true">*</span>
+      <span class="u-visually-hidden">(required)</span>
+    }
+  </label>
+
+  <select
+    class="field__input field__input--select"
+    [class.field__input--invalid]="hasError()"
+    [id]="inputId"
+    [formControl]="control()"
+    [attr.aria-describedby]="describedBy()"
+    [attr.aria-invalid]="hasError() ? 'true' : null"
+  >
+    @for (option of options(); track option.value) {
+      <option [value]="option.value">{{ option.label }}</option>
+    }
+  </select>
+
+  @if (hasError()) {
+    <p class="field__error" [id]="errorId">{{ errorMessage() }}</p>
+  } @else if (hint()) {
+    <p class="field__hint" [id]="hintId">{{ hint() }}</p>
+  }
+</div>

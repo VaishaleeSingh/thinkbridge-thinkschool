@@ -1,0 +1,27 @@
+@use 'mixins' as *;
+
+.filters {
+  display: grid;
+  gap: var(--space-4);
+
+  // Stacked on a phone; the filter takes the space it needs and the select takes
+  // its natural width from 768px up.
+  grid-template-columns: minmax(0, 1fr);
+
+  @include md {
+    grid-template-columns: minmax(0, 1fr) 12rem;
+    align-items: start;
+  }
+}
+
+.filters__search,
+.filters__size {
+  min-width: 0;
+}
+
+.filters__count {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
