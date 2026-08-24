@@ -4,6 +4,8 @@ A front end for this repository's own API, in `Day13/quotes-web`. Angular 21.2,
 standalone throughout, no NgModules, no zone.js, signals as the only state
 mechanism.
 
+**Pull request:** [thinkbridge-thinkschool/VaishaleeSingh#36](https://github.com/thinkbridge-thinkschool/VaishaleeSingh/pull/36)
+
 The API is not new and was not rewritten. Two things were added to it, both
 because a browser client needs them and nothing before Day 13 did — a CORS policy
 and a way to create an account. Those changes are in `Day7/piece2`, in place: the
