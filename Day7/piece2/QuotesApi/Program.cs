@@ -82,6 +82,16 @@ builder.Services.AddProblemDetails();
 // Extensions/InfrastructureExtensions.cs for the details of each piece.
 builder.Services.AddInfrastructure(builder.Configuration);
 
+// Day 13 -- the one CORS policy this API has. Needed because Day 13 adds an
+// Angular SPA on its own origin (http://localhost:4200 in development), and
+// a browser will not let that page read a response from this API unless the
+// API names its origin. Every client before Day 13 was a server, a CLI or a
+// test, none of which the same-origin policy applies to, which is why there
+// was no policy here at all until now. See Extensions/CorsExtensions.cs for
+// why it names origins rather than allowing any, and why it does not allow
+// credentials.
+builder.Services.AddSpaCors(builder.Configuration);
+
 // Distributed tracing (spans for requests, EF queries, outbound HTTP, plus
 // this app's own custom spans). See ObservabilityExtensions.cs -- in
 // particular for why the OTLP exporter is only wired up when an endpoint is
@@ -107,13 +117,34 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 // ProblemDetails response instead of leaking a raw .NET stack trace.
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
+// Backend-owned static assets (quote backgrounds) served from wwwroot.
+app.UseStaticFiles();
+
 // Applies any pending EF Core migrations on startup, so the database schema
 // is always up to date before the app starts accepting requests.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
-    await db.Database.MigrateAsync();
+    if (db.Database.IsSqlServer())
+    {
+        // SQL Server is created from the current model for Azure setup.
+        await db.Database.EnsureCreatedAsync();
+    }
+    else
+    {
+        await db.Database.MigrateAsync();
+    }
+
+    await DbInitializer.SeedAsync(db);
 }
+
+// Day 13 -- CORS runs BEFORE authentication and authorization, and that
+// order is not cosmetic. A rejected cross-origin request should be rejected
+// as a CORS failure that names the origin, and a browser preflight (OPTIONS,
+// carrying no Authorization header at all) must be answered before anything
+// tries to authenticate it -- otherwise every preflight comes back 401 and
+// the real request the browser was asking permission for is never sent.
+app.UseCors(CorsExtensions.SpaPolicyName);
 
 // --- Turn authentication/authorization ON ----------------------------------
 // UseAuthentication() reads the incoming request's token and figures out

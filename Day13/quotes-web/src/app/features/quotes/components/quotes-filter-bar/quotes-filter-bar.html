@@ -1,0 +1,28 @@
+<app-card variant="outlined" padding="sm">
+  <div class="filters">
+    <div class="filters__search">
+      <app-text-field
+        label="Filter"
+        type="search"
+        placeholder="Author or text"
+        [control]="searchControl"
+        hint="Search within the current page. Use pagination to explore more quotes."
+      />
+    </div>
+
+    <div class="filters__size">
+      <app-select-field label="Page size" [control]="sizeControl" [options]="sizeOptions()" />
+    </div>
+  </div>
+
+  @if (isFiltering()) {
+    <!--
+      aria-live so the count is announced after typing stops. It says "on this
+      page" because that is exactly what the filter can see -- claiming a total
+      would be wrong.
+    -->
+    <p class="filters__count" aria-live="polite">
+      {{ matchCount() }} of {{ fetchedCount() }} on this page match
+    </p>
+  }
+</app-card>

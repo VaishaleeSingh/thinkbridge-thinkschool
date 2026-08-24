@@ -1,0 +1,55 @@
+@use 'mixins' as *;
+
+:host {
+  @include surface;
+
+  display: block;
+  padding: var(--space-5);
+  box-sizing: border-box;
+  width: 100%;
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+
+  // min-width: 0 so a card inside a grid or flex row can actually shrink. Grid
+  // items default to min-width:auto, which means a long unbroken string inside
+  // one refuses to shrink below its content and pushes the grid wider than the
+  // viewport -- the most common cause of horizontal page scroll.
+  min-width: 0;
+
+  transition:
+    box-shadow var(--duration-base) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+
+:host(.card--pad-sm) {
+  padding: var(--space-4);
+}
+
+:host(.card--pad-lg) {
+  padding: var(--space-6);
+}
+
+:host(.card--outlined) {
+  box-shadow: none;
+  border-color: var(--color-border-strong);
+}
+
+:host(.card--highlighted) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+:host(.card--interactive):hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary-ring);
+  transform: translateY(-2px);
+}
+
+// A card containing a focused control should look focused too, so keyboard
+// users get the same "you are here" signal that hover gives a mouse.
+:host(.card--interactive):focus-within {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-md);
+}

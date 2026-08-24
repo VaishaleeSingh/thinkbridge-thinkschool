@@ -63,6 +63,32 @@ public class QuoteRepository : IQuoteRepository
         return quote;
     }
 
+    public async Task<Quote?> UpdateAsync(
+        int id,
+        string author,
+        string text,
+        string backgroundImageUrl,
+        CancellationToken cancellationToken)
+    {
+        var quote = await _db.Quotes
+            .FirstOrDefaultAsync(q => q.Id == id, cancellationToken);
+
+        if (quote is null)
+            return null;
+
+        quote.Author = author;
+        quote.Text = text;
+        quote.BackgroundImageUrl = backgroundImageUrl;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Updated quote {QuoteId}",
+            id);
+
+        return quote;
+    }
+
     public async Task<bool> DeleteAsync(
         int id,
         CancellationToken cancellationToken)

@@ -255,7 +255,8 @@ public static class DiagnosticsEndpointExtensions
                     Id = q.Id,
                     Author = q.Author,
                     Text = q.Text,
-                    CreatedByUserId = q.CreatedByUserId
+                    CreatedByUserId = q.CreatedByUserId,
+                    BackgroundImageUrl = q.BackgroundImageUrl
                 })
                 .ToListAsync(cancellationToken);
 
@@ -283,7 +284,7 @@ public static class DiagnosticsEndpointExtensions
             // and again written to match what EF emits rather than to beat it,
             // so the comparison stays about mapping and not about SQL.
             const string sql = """
-                SELECT Id, Author, Text, CreatedByUserId
+                SELECT Id, Author, Text, CreatedByUserId, BackgroundImageUrl
                 FROM Quotes
                 ORDER BY Id
                 LIMIT @take
@@ -524,4 +525,6 @@ public sealed class QuoteWideRow
     public string Text { get; set; } = "";
 
     public string? CreatedByUserId { get; set; }
+
+    public string BackgroundImageUrl { get; set; } = "";
 }

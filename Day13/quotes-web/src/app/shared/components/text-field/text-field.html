@@ -1,0 +1,31 @@
+<div class="field">
+  <label class="field__label" [attr.for]="inputId">
+    <span>{{ label() }}</span>
+
+    @if (isRequired()) {
+      <span class="field__required" aria-hidden="true">*</span>
+      <span class="u-visually-hidden">(required)</span>
+    } @else if (showOptionalHint()) {
+      <span class="field__optional">optional</span>
+    }
+  </label>
+
+  <input
+    class="field__input"
+    [class.field__input--invalid]="hasError()"
+    [id]="inputId"
+    [type]="type()"
+    [formControl]="control()"
+    [attr.placeholder]="placeholder() || null"
+    [attr.autocomplete]="autocomplete() || null"
+    [attr.maxlength]="maxLength()"
+    [attr.aria-describedby]="describedBy()"
+    [attr.aria-invalid]="hasError() ? 'true' : null"
+  />
+
+  @if (hasError()) {
+    <p class="field__error" [id]="errorId">{{ errorMessage() }}</p>
+  } @else if (hint()) {
+    <p class="field__hint" [id]="hintId">{{ hint() }}</p>
+  }
+</div>

@@ -1,0 +1,44 @@
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-4);
+  text-align: center;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  animation: fade-in var(--duration-base) var(--ease-out) both;
+}
+
+// A quiet aqua ring rather than an illustration or an icon font: it signals
+// "intentionally empty" without adding an asset to load or a glyph that means
+// nothing in another locale.
+.empty__mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: 2px dashed var(--color-primary-ring);
+}
+
+.empty__title {
+  font-size: var(--text-lg);
+}
+
+.empty__description {
+  max-width: 34rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+
+  // Collapses to nothing when no action is projected, so the padding above does
+  // not become a gap at the bottom of an action-less empty state.
+  &:empty {
+    display: none;
+  }
+}

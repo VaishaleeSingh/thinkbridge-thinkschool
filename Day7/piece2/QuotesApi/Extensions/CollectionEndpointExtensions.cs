@@ -151,6 +151,47 @@ public static class CollectionEndpointExtensions
             return Results.NoContent();
         }).RequireAuthorization("can-delete-collections");
 
+        // DELETE /api/collections/{id} -- remove the WHOLE collection, not one
+        // item within it (that is DELETE /{id}/items/{quoteId} above).
+        //
+        // Same two-check shape as DELETE /api/quotes/{id}: "can-delete-collections"
+        // is a claim-based policy that runs from the token alone, before this
+        // body executes at all -- see .RequireAuthorization below. Ownership can
+        // only be checked HERE, after the collection is loaded, because whether
+        // this caller owns THIS collection is not something the token carries.
+        //
+        // Unlike Quote, Collection has no "unowned, so anyone may act on it"
+        // case -- the aggregate's constructor always requires an OwnerId, so
+        // this is a plain equality check rather than a resource-based
+        // AuthorizationHandler like MustOwnQuoteHandler. Introducing that
+        // machinery for a rule with no second branch would be indirection with
+        // nothing behind it.
+        group.MapDelete("/{id:int}", async (
+            int id,
+            ICollectionRepository repository,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
+        {
+            var ownerId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? user.FindFirst("sub")?.Value;
+
+            var collection = await repository.GetByIdAsync(id, cancellationToken);
+
+            if (collection is null)
+                return Results.NotFound();
+
+            // 403, not 404: the caller is allowed to know a collection with this
+            // id exists (ids are not secrets), they are just not allowed to
+            // delete this one. QuoteEndpointExtensions' delete makes the same
+            // choice for the same reason.
+            if (collection.OwnerId != ownerId)
+                return Results.Forbid();
+
+            await repository.DeleteAsync(collection, cancellationToken);
+
+            return Results.NoContent();
+        }).RequireAuthorization("can-delete-collections");
+
         return app;
     }
 }

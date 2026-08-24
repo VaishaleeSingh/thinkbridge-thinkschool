@@ -2,9 +2,20 @@ namespace QuotesApi.Models;
 
 public class Quote
 {
+    private static readonly string[] DefaultBackgroundImageUrls =
+    {
+        "/quote-backgrounds/mountain-1.jpg",
+        "/quote-backgrounds/mountain-2.jpg",
+        "/quote-backgrounds/mountain-3.jpg",
+        "/quote-backgrounds/mountain-4.jpg",
+        "/quote-backgrounds/mountain-5.jpg",
+        "/quote-backgrounds/mountain-6.jpg"
+    };
+
     public int Id { get; set; }
     public string Author { get; set; } = "";
     public string Text { get; set; } = "";
+    public string BackgroundImageUrl { get; set; } = DefaultBackgroundImageUrls[0];
 
     /// <summary>
     /// Id of the user who created this quote — taken from their token's
@@ -37,7 +48,11 @@ public class Quote
     /// parameter for every failure mode, so callers (and tests) can assert
     /// exactly which field was invalid.
     /// </summary>
-    public static Quote Create(string author, string text, string? createdByUserId = null)
+    public static Quote Create(
+        string author,
+        string text,
+        string? createdByUserId = null,
+        string? backgroundImageUrl = null)
     {
         if (string.IsNullOrWhiteSpace(author))
             throw new ArgumentException("Author is required.", nameof(author));
@@ -51,11 +66,49 @@ public class Quote
         if (text.Length > 1000)
             throw new ArgumentException("Text must be 1000 characters or less.", nameof(text));
 
+        var resolvedBackground = ResolveBackgroundImageUrl(backgroundImageUrl, $"{author}|{text}");
+
         return new Quote
         {
             Author = author,
             Text = text,
-            CreatedByUserId = createdByUserId
+            CreatedByUserId = createdByUserId,
+            BackgroundImageUrl = resolvedBackground
         };
+    }
+
+    public static string ResolveBackgroundImageUrl(string? backgroundImageUrl, string? seedText = null)
+    {
+        if (string.IsNullOrWhiteSpace(backgroundImageUrl))
+        {
+            return SelectDefaultBackground(seedText);
+        }
+
+        var trimmed = backgroundImageUrl.Trim();
+
+        if (trimmed.Length > 500)
+            throw new ArgumentException("Background image URL must be 500 characters or less.", nameof(backgroundImageUrl));
+
+        if (!trimmed.StartsWith("/quote-backgrounds/", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Background image URL must point to a backend-hosted /quote-backgrounds file.", nameof(backgroundImageUrl));
+        }
+
+        return trimmed;
+    }
+
+    public static string SelectDefaultBackground(string? seedText)
+    {
+        if (string.IsNullOrWhiteSpace(seedText))
+            return DefaultBackgroundImageUrls[0];
+
+        var hash = 0;
+        foreach (var ch in seedText)
+        {
+            hash = unchecked((hash * 31) + ch);
+        }
+
+        var index = Math.Abs(hash % DefaultBackgroundImageUrls.Length);
+        return DefaultBackgroundImageUrls[index];
     }
 }

@@ -1,0 +1,14 @@
+// =============================================================================
+// The application's only global stylesheet. It is deliberately three lines of
+// composition and nothing else -- every actual rule lives in one of the three
+// partials, so "where is this colour defined" and "where is this element's
+// default set" have one answer each.
+//
+// Component styles are NOT here. Each component owns its own .scss file and
+// Angular scopes it to that component, which is what keeps a change to one card
+// from reaching another.
+// =============================================================================
+
+@use 'styles/tokens';
+@use 'styles/base';
+@use 'styles/animations';

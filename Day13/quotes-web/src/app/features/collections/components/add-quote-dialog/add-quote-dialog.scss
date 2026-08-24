@@ -1,0 +1,87 @@
+.picker {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.picker__error {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+.picker__select-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.picker__list {
+  display: grid;
+  gap: var(--space-2);
+
+  // Its own scroll container, so a long candidate list scrolls inside the dialog
+  // rather than making the dialog taller than the viewport.
+  max-height: 22rem;
+  overflow-y: auto;
+
+  // Room for the focus ring on the last row's button, which would otherwise be
+  // clipped by the scroll container.
+  padding: 2px;
+}
+
+.picker__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  cursor: pointer;
+
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+
+  &:hover {
+    border-color: var(--color-primary-ring);
+    background: var(--color-surface-hover);
+  }
+}
+
+.picker__check {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
+
+  input {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
+}
+
+.picker__text {
+  min-width: 0;
+}
+
+.picker__quote {
+  font-size: var(--text-sm);
+
+  // One line: this is a picker, not a reader. The full text is on the collection
+  // page once it has been added.
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker__author {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.picker__batch-actions {
+  display: flex;
+  justify-content: flex-end;
+}

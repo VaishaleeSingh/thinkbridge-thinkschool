@@ -1,0 +1,49 @@
+<app-modal
+  [open]="open()"
+  [busy]="submitting()"
+  [title]="modalTitle()"
+  (closed)="cancelled.emit()"
+>
+  <form class="quote-form" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <app-text-field
+      label="Author"
+      placeholder="Seneca"
+      [control]="form.controls.author"
+      [maxLength]="limits.authorMaxLength"
+    />
+
+    <app-textarea-field
+      label="Quote"
+      placeholder="What it actually says…"
+      [control]="form.controls.text"
+      [rows]="5"
+      [maxLength]="limits.textMaxLength"
+    />
+
+    <app-select-field
+      label="Background"
+      hint="Choose a background style for this quote card."
+      [control]="form.controls.backgroundImageUrl"
+      [options]="backgroundOptions"
+    />
+
+    <!--
+      A submit button inside the form, hidden from view: it is what makes Enter
+      submit the form, which the footer's button (outside the <form>, in the
+      modal's footer slot) cannot do.
+    -->
+    <button type="submit" class="u-visually-hidden" [attr.aria-hidden]="true" tabindex="-1">
+      {{ quote() ? 'Update quote' : 'Save quote' }}
+    </button>
+  </form>
+
+  <ng-container ngProjectAs="[modalFooter]">
+    <app-button variant="secondary" [disabled]="submitting()" (pressed)="cancelled.emit()">
+      Cancel
+    </app-button>
+
+    <app-button [loading]="submitting()" loadingLabel="Saving…" (pressed)="submit()">
+      {{ quote() ? 'Update quote' : 'Save quote' }}
+    </app-button>
+  </ng-container>
+</app-modal>

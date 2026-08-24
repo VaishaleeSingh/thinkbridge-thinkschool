@@ -107,6 +107,18 @@ public static class QuoteEndpointExtensions
             if (request.Text?.Length > 1000)
                 errors["text"] = new[] { "Text must be 1000 characters or less." };
 
+            if (!string.IsNullOrWhiteSpace(request.BackgroundImageUrl))
+            {
+                try
+                {
+                    _ = Quote.ResolveBackgroundImageUrl(request.BackgroundImageUrl);
+                }
+                catch (ArgumentException exception)
+                {
+                    errors["backgroundImageUrl"] = new[] { exception.Message };
+                }
+            }
+
             if (errors.Count > 0)
                 return Results.ValidationProblem(errors);
 
@@ -127,7 +139,8 @@ public static class QuoteEndpointExtensions
             var quote = Quote.Create(
                 normalizer.Normalize(request.Author!),
                 normalizer.Normalize(request.Text!),
-                callerId);
+                callerId,
+                request.BackgroundImageUrl);
 
             var created = await repository.AddAsync(
                 quote,
@@ -153,6 +166,75 @@ public static class QuoteEndpointExtensions
                 ? Results.NotFound()
                 : Results.Ok(quote);
         }).RequireAuthorization("can-read-quotes");
+
+        // PUT /api/quotes/{id} -- update an existing quote.
+        // Needs write permission and ownership checks, mirroring delete.
+        group.MapPut("/{id:int}", async (
+            int id,
+            UpdateQuoteRequest request,
+            IQuoteRepository repository,
+            IQuoteTextNormalizer normalizer,
+            IAuthorizationService authorizationService,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = new Dictionary<string, string[]>();
+
+            if (string.IsNullOrWhiteSpace(request.Author))
+                errors["author"] = new[] { "Author is required." };
+
+            if (string.IsNullOrWhiteSpace(request.Text))
+                errors["text"] = new[] { "Text is required." };
+
+            if (request.Author?.Length > 200)
+                errors["author"] = new[] { "Author must be 200 characters or less." };
+
+            if (request.Text?.Length > 1000)
+                errors["text"] = new[] { "Text must be 1000 characters or less." };
+
+            if (!string.IsNullOrWhiteSpace(request.BackgroundImageUrl))
+            {
+                try
+                {
+                    _ = Quote.ResolveBackgroundImageUrl(request.BackgroundImageUrl);
+                }
+                catch (ArgumentException exception)
+                {
+                    errors["backgroundImageUrl"] = new[] { exception.Message };
+                }
+            }
+
+            if (errors.Count > 0)
+                return Results.ValidationProblem(errors);
+
+            var quote = await repository.GetByIdAsync(id, cancellationToken);
+
+            if (quote is null)
+                return Results.NotFound();
+
+            var ownershipResult = await authorizationService.AuthorizeAsync(
+                user, quote, new MustOwnQuoteRequirement());
+
+            if (!ownershipResult.Succeeded)
+                return Results.Forbid();
+
+            var normalizedAuthor = normalizer.Normalize(request.Author!);
+            var normalizedText = normalizer.Normalize(request.Text!);
+            var normalizedBackground = Quote.ResolveBackgroundImageUrl(
+                request.BackgroundImageUrl,
+                $"{normalizedAuthor}|{normalizedText}");
+
+            var updated = await repository.UpdateAsync(
+                id,
+                normalizedAuthor,
+                normalizedText,
+                normalizedBackground,
+                cancellationToken);
+
+            return updated is null
+                ? Results.NotFound()
+                : Results.Ok(updated);
+        }).RequireAuthorization("can-edit-quotes");
 
         // DELETE /api/quotes/{id} — remove a quote.
         // Two separate checks apply here, and they run in a deliberate
@@ -198,4 +280,7 @@ public static class QuoteEndpointExtensions
 }
 
 /// <summary>Shape of the JSON body for POST /api/quotes.</summary>
-public record CreateQuoteRequest(string? Author, string? Text);
+public record CreateQuoteRequest(string? Author, string? Text, string? BackgroundImageUrl = null);
+
+/// <summary>Shape of the JSON body for PUT /api/quotes/{id}.</summary>
+public record UpdateQuoteRequest(string? Author, string? Text, string? BackgroundImageUrl = null);

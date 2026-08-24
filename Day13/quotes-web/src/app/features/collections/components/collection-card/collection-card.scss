@@ -1,0 +1,93 @@
+@use 'mixins' as *;
+
+// Stretches this card to the full height of its grid cell, so every card in a
+// row is the same height and .collection__footer's `margin-top: auto` can push
+// the Delete button to the bottom regardless of how much text is above it.
+// Same pattern as quote-card, written out directly rather than as a shared
+// mixin -- there was never one defined, only referenced here by mistake.
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+app-card {
+  display: block;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.collection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+}
+
+.collection__title {
+  font-size: var(--text-lg);
+  min-width: 0;
+}
+
+.collection__link {
+  color: var(--color-text);
+  text-decoration: none;
+
+  // The hit area covers the card without the card being a button: the link's own
+  // ::after is stretched over it, so a click anywhere activates the real <a>.
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  &:hover {
+    color: var(--color-primary);
+  }
+}
+
+.collection__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.collection__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+
+  // Without this, the delete button sits underneath .collection__link's
+  // stretched ::after (position: absolute; inset: 0, covering the whole card
+  // so the name link's hit area extends over it) -- an absolutely positioned
+  // element stacks above a static sibling regardless of DOM order, so a click
+  // on "Delete" would silently navigate to the collection instead. Lifting
+  // this into its own stacking context above it is what makes the button
+  // clickable at all.
+  position: relative;
+  z-index: 1;
+}
+
+.collection__fact {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+
+  dt {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+  }
+
+  dd {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+}

@@ -1,0 +1,101 @@
+<!--
+  First focusable element on the page. It is visually hidden until focused (see
+  .u-skip-link) and exists so a keyboard user can get past the header on every
+  navigation instead of tabbing through it each time.
+-->
+<a class="u-skip-link" href="#main-content">Skip to content</a>
+
+<header class="shell__header">
+  <div class="u-container shell__header-inner">
+    <!--
+      aria-label, because the nav below has a "Quotes" link too and two links
+      with the same name reading to the same place is ambiguous. The label still
+      contains the visible text, so speech control ("click Quotes") keeps working.
+    -->
+    <a class="brand" routerLink="/quotes" aria-label="Quotes home">
+      <img class="brand__image" src="/quotes-brand-mark.svg" alt="Quotes logo" />
+      <span class="brand__name">Quotes</span>
+    </a>
+
+    <nav class="nav" aria-label="Main">
+      <!--
+        routerLinkActive with exact matching, plus aria-current: the highlight is
+        a colour, and colour alone does not tell a screen reader which page it is
+        on.
+      -->
+      <a
+        class="nav__link"
+        routerLink="/quotes"
+        routerLinkActive="nav__link--active"
+        ariaCurrentWhenActive="page"
+      >
+        Quotes
+      </a>
+
+      <a
+        class="nav__link"
+        routerLink="/collections"
+        routerLinkActive="nav__link--active"
+        ariaCurrentWhenActive="page"
+      >
+        Collections
+      </a>
+    </nav>
+
+    <div class="shell__account">
+      <app-button
+        variant="ghost"
+        size="sm"
+        [ariaLabel]="themeActionLabel()"
+        (pressed)="theme.toggle()"
+      >
+        @if (theme.nextPreference() === 'dark') {
+          <svg
+            class="theme-toggle__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        } @else {
+          <svg
+            class="theme-toggle__icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8" />
+            <path
+              d="M12 2V4M12 20V22M4.93 4.93L6.34 6.34M17.66 17.66L19.07 19.07M2 12H4M20 12H22M4.93 19.07L6.34 17.66M17.66 6.34L19.07 4.93"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+        }
+      </app-button>
+
+      <!--
+        The signed-in address is useful context but is not the point of the
+        header, so it is hidden below 640px rather than wrapping the header onto
+        a third row on a phone.
+      -->
+      <span class="shell__email">{{ email() }}</span>
+
+      <app-button variant="secondary" size="sm" (pressed)="signOut()">Sign out</app-button>
+    </div>
+  </div>
+</header>
+
+<main id="main-content" class="shell__main u-container" tabindex="-1">
+  <router-outlet />
+</main>

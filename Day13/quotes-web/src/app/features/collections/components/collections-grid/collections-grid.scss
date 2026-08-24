@@ -1,0 +1,37 @@
+@use 'mixins' as *;
+
+.grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
+
+  @include sm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include lg {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.grid__cell {
+  display: flex;
+
+  // position: relative so the stretched ::after on the card's link is bounded by
+  // this cell rather than by the page.
+  position: relative;
+
+  // The same staggered entrance as the quotes grid, including the shared cap past
+  // the sixth card -- see quotes-grid.scss for why the cap matters.
+  animation: fade-in-up var(--duration-base) var(--ease-out) both;
+
+  @for $index from 1 through 6 {
+    &:nth-child(#{$index}) {
+      animation-delay: #{($index - 1) * 25}ms;
+    }
+  }
+
+  &:nth-child(n + 7) {
+    animation-delay: 150ms;
+  }
+}

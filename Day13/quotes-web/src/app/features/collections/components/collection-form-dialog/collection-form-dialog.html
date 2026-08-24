@@ -1,0 +1,31 @@
+<app-modal
+  [open]="open()"
+  [busy]="submitting()"
+  title="New collection"
+  size="sm"
+  (closed)="cancelled.emit()"
+>
+  <form class="collection-form" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <app-text-field
+      label="Name"
+      placeholder="Stoics worth rereading"
+      [control]="form.controls.name"
+      [maxLength]="limits.nameMaxLength"
+      [hint]="'Up to ' + limits.nameMaxLength + ' characters. Holds up to ' + limits.maxItems + ' quotes.'"
+    />
+
+    <button type="submit" class="u-visually-hidden" [attr.aria-hidden]="true" tabindex="-1">
+      Create collection
+    </button>
+  </form>
+
+  <ng-container ngProjectAs="[modalFooter]">
+    <app-button variant="secondary" [disabled]="submitting()" (pressed)="cancelled.emit()">
+      Cancel
+    </app-button>
+
+    <app-button [loading]="submitting()" loadingLabel="Creating…" (pressed)="submit()">
+      Create collection
+    </app-button>
+  </ng-container>
+</app-modal>

@@ -1,0 +1,55 @@
+@use 'mixins' as *;
+
+.sign-in__heading {
+  font-size: var(--text-2xl);
+}
+
+.sign-in__lead {
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.sign-in__form {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.sign-in__error {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  animation: fade-in-up var(--duration-fast) var(--ease-out) both;
+}
+
+.sign-in__switch {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.sign-in__switch-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font-size: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: var(--radius-sm);
+
+  @include focus-ring;
+
+  &:hover {
+    color: var(--color-primary-hover);
+  }
+}

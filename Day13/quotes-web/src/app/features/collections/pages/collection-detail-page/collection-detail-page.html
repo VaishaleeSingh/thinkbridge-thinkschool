@@ -1,0 +1,102 @@
+<!--
+  A real breadcrumb link back to the list. The browser's back button does the
+  same thing, but only for someone who arrived that way -- a deep link or a
+  reload leaves no history to go back through.
+-->
+<nav class="detail__breadcrumb" aria-label="Breadcrumb">
+  <a routerLink="/collections">Collections</a>
+</nav>
+
+@if (store.showLoading()) {
+  <app-loader variant="spinner" label="Loading collection" />
+} @else if (store.showError()) {
+  @if (store.error(); as failure) {
+    <app-error-state
+      title="Could not load this collection"
+      [message]="failure.message"
+      [retryable]="failure.status !== 404"
+      [retrying]="store.isLoading()"
+      (retry)="reload()"
+    />
+  }
+} @else {
+  <app-page-header [title]="store.name()">
+    <app-button [disabled]="store.isFull()" (pressed)="openPicker()">Add a quote</app-button>
+  </app-page-header>
+
+  <div class="detail__facts">
+    <app-badge [tone]="store.isFull() ? 'warning' : 'primary'">
+      {{ store.quoteCount() }} of 50 quotes
+    </app-badge>
+
+    @if (store.isFull()) {
+      <p class="detail__note">
+        This collection is full. Remove a quote before adding another — the API refuses a 51st.
+      </p>
+    }
+  </div>
+
+  <!--
+    An action that failed is reported here rather than replacing the collection:
+    the page loaded fine, and blanking it would lose the context the message is
+    about.
+  -->
+  @if (store.actionError(); as failure) {
+    <div class="detail__action-error">
+      <app-error-state
+        title="That action did not work"
+        [message]="failure.message"
+        [retryable]="false"
+      />
+    </div>
+  }
+
+  @if (store.showEmpty()) {
+    <app-empty-state
+      title="Nothing in this collection yet"
+      description="Add quotes from the API and they will be listed here with when each was added."
+    >
+      <app-button (pressed)="openPicker()">Add a quote</app-button>
+    </app-empty-state>
+  } @else {
+    <ul class="detail__quotes">
+      @for (quote of store.quotes(); track quote.quoteId) {
+        <li>
+          <app-collection-quote-row
+            [quote]="quote"
+            [removing]="store.removingId() === quote.quoteId"
+            (removeRequested)="confirmRemoval($event)"
+          />
+        </li>
+      }
+    </ul>
+  }
+}
+
+<app-add-quote-dialog
+  [open]="isPickerOpen()"
+  [quotes]="candidates()"
+  [loading]="quotesStore.isLoading()"
+  [adding]="store.isAdding()"
+  [remainingSlots]="store.remainingSlots()"
+  [errorMessage]="store.actionError()?.message ?? null"
+  (searchChanged)="quotesStore.setSearch($event)"
+  (quotesSelected)="addQuotes($event)"
+  (cancelled)="closePicker()"
+/>
+
+@if (pendingRemoval(); as quote) {
+  <app-confirm-dialog
+    [open]="true"
+    title="Remove from this collection?"
+    [message]="
+      'The quote by ' +
+      quote.author +
+      ' stays in the API — it is only removed from this collection.'
+    "
+    [busy]="store.removingId() === quote.quoteId"
+    confirmLabel="Remove"
+    (confirmed)="removalConfirmed()"
+    (cancelled)="cancelRemoval()"
+  />
+}

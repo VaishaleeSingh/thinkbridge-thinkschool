@@ -81,6 +81,22 @@ return identical output, to make the "aggregate collapses rows, a window
 function decorates them" difference concrete rather than asserted. Details
 in `Day7/piece2/docs/day7-window-functions-submission.md`.
 
+**Day 13 — the front end.** `Day13/quotes-web` is an Angular 21 client for this
+same API: standalone components throughout, no NgModules, no zone.js, and signals
+as the only state mechanism. Every screen reads and writes through the real
+endpoints — `/api/auth`, `/api/quotes`, `/api/collections` — and there is no mock
+data in it.
+
+Two things were added to the API for it, both in `Day7/piece2` in place rather
+than as a copied snapshot, because a browser is the first client that needs
+either: a CORS policy (`QuotesApi/Extensions/CorsExtensions.cs` — named origins,
+no credentials, fails at startup on a malformed entry) and
+`POST /api/auth/register`, since the API could verify a password but had no way to
+set one. `Day13/docs/day13-angular-signals-zoneless-submission.md` is the write-up
+and the verification report — including what could not be verified, namely that
+the C# changes have not been compiled, because no .NET SDK was available where the
+front end was built.
+
 ## Running it
 
 Prerequisites: .NET 10 SDK. Docker is needed only for the SQL Server

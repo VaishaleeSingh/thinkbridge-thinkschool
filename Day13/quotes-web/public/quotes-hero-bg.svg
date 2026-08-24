@@ -1,0 +1,48 @@
+<svg width="1600" height="720" viewBox="0 0 1600 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="720" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#90CDF4" />
+      <stop offset="0.4" stop-color="#5AA9E6" />
+      <stop offset="1" stop-color="#1B4965" />
+    </linearGradient>
+    <radialGradient id="sunGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1210 150) rotate(90) scale(170)">
+      <stop stop-color="#FFF9C4" stop-opacity="0.95" />
+      <stop offset="1" stop-color="#FFF9C4" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="mountainFar" x1="0" y1="280" x2="1600" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5D6D7E" />
+      <stop offset="1" stop-color="#34495E" />
+    </linearGradient>
+    <linearGradient id="mountainMid" x1="0" y1="330" x2="1600" y2="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3B4F63" />
+      <stop offset="1" stop-color="#243447" />
+    </linearGradient>
+    <linearGradient id="mountainNear" x1="0" y1="430" x2="1600" y2="720" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1E2C3A" />
+      <stop offset="1" stop-color="#111A24" />
+    </linearGradient>
+    <linearGradient id="mist" x1="0" y1="450" x2="0" y2="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#CDEAF7" stop-opacity="0.3" />
+      <stop offset="1" stop-color="#CDEAF7" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="500" x2="1600" y2="720" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3B82A0" stop-opacity="0.58" />
+      <stop offset="1" stop-color="#0F3D56" stop-opacity="0.74" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="720" fill="url(#sky)" />
+  <rect width="1600" height="720" fill="url(#sunGlow)" />
+
+  <circle cx="1210" cy="150" r="64" fill="#FFEFA1" fill-opacity="0.92" />
+
+  <path d="M0 470L170 380L280 430L420 330L580 445L760 300L900 390L1060 280L1240 420L1370 350L1510 430L1600 390V720H0V470Z" fill="url(#mountainFar)" />
+  <path d="M0 560L160 470L320 535L470 420L640 560L820 410L980 560L1170 430L1330 560L1490 500L1600 560V720H0V560Z" fill="url(#mountainMid)" />
+  <path d="M0 630L140 560L260 610L420 520L610 650L790 540L960 650L1150 560L1340 650L1510 600L1600 630V720H0V630Z" fill="url(#mountainNear)" />
+
+  <rect y="500" width="1600" height="220" fill="url(#water)" />
+  <rect y="430" width="1600" height="220" fill="url(#mist)" />
+
+  <path d="M110 565C260 585 400 595 550 575C700 555 835 530 1010 550C1180 570 1310 615 1490 605" stroke="#D6F3FF" stroke-opacity="0.3" stroke-width="4" stroke-linecap="round" />
+  <path d="M180 615C340 640 480 640 650 620C830 598 980 580 1165 605C1320 625 1440 660 1560 652" stroke="#BEEBFF" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round" />
+</svg>

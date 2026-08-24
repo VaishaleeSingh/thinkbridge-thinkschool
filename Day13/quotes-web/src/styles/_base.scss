@@ -1,0 +1,163 @@
+@use 'mixins' as *;
+
+// =============================================================================
+// Base -- a small reset, then the document's own typography and defaults.
+//
+// This is not a full reset library. It removes the handful of browser defaults
+// that actually fight a design system (box sizing, heading margins, control
+// fonts) and leaves everything else alone, because a reset that unsets
+// everything means every component has to re-state basics that were fine.
+// =============================================================================
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  // Never let a wide child (a long unbroken quote, a grid that did not wrap)
+  // scroll the whole page sideways. Wide content gets its own scroll container
+  // instead; see the tables and code blocks in the feature styles.
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: var(--text-3xl);
+}
+h2 {
+  font-size: var(--text-2xl);
+}
+h3 {
+  font-size: var(--text-xl);
+}
+
+p {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Controls do not inherit the document font in any browser. Stating it once
+// here is what stops every button, input and select in the app from needing to
+// repeat font-family.
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+
+  &:hover {
+    color: var(--color-primary-hover);
+  }
+
+  @include focus-ring;
+}
+
+img,
+svg {
+  max-width: 100%;
+  display: block;
+}
+
+// A long author name or an unbroken URL inside a quote should wrap rather than
+// widen its card. Applied at the document level because the alternative is
+// remembering it in every component that renders API text.
+p,
+h1,
+h2,
+h3,
+h4,
+li,
+td,
+th,
+blockquote {
+  overflow-wrap: break-word;
+}
+
+// =============================================================================
+// Two utilities the whole app uses.
+// =============================================================================
+
+// The horizontal page frame: full width on a phone, centred and capped on a
+// large monitor. max-width plus auto margins rather than a fixed width, so
+// there is no viewport at which it overflows.
+.u-container {
+  width: 100%;
+  max-width: var(--layout-max-width);
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+
+  @include md {
+    padding-inline: var(--space-5);
+  }
+}
+
+// Skip link and screen-reader-only text.
+.u-visually-hidden {
+  @include visually-hidden;
+}
+
+.u-skip-link {
+  position: absolute;
+  left: var(--space-4);
+  top: -3rem;
+  z-index: calc(var(--z-modal) + 1);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-weight: var(--weight-medium);
+  transition: top var(--duration-fast) var(--ease-out);
+
+  &:focus {
+    top: var(--space-3);
+  }
+}
+
+// Set by Modal while a dialog is open. Global rather than component-scoped
+// because <body> belongs to no component and no component's scoped stylesheet
+// can reach it.
+//
+// Known limitation, stated rather than hidden: iOS Safari ignores
+// `overflow: hidden` on <body>, so the page behind a dialog can still be
+// rubber-band scrolled there. The fix is position: fixed plus restoring
+// scrollTop on close, which trades a real jump-to-top bug for a cosmetic one --
+// not worth it until someone reports the scrolling as a problem.
+body.has-modal {
+  overflow: hidden;
+}

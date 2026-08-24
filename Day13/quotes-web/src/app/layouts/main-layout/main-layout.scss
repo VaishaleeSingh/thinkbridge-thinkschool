@@ -1,0 +1,160 @@
+@use 'mixins' as *;
+
+:host {
+  display: block;
+  min-height: 100dvh;
+}
+
+.shell__header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+
+  // Sticky, so it must not become a wall on a short screen: at 375px the two
+  // rows below add up to ~7rem, which still leaves the fold usable.
+  box-shadow: var(--shadow-sm);
+}
+
+.shell__header-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  padding-block: var(--space-3);
+
+  @include md {
+    flex-wrap: nowrap;
+    min-height: var(--header-height);
+  }
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+  text-decoration: none;
+  font-weight: var(--weight-bold);
+  font-size: var(--text-lg);
+  letter-spacing: -0.02em;
+
+  &:hover {
+    color: var(--color-primary);
+  }
+}
+
+.brand__image {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  display: block;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+
+  // On a phone the nav takes its own row, full width, so both links keep a
+  // 44px target instead of being squeezed next to the account controls.
+  order: 3;
+  width: 100%;
+
+  @include md {
+    order: initial;
+    width: auto;
+    margin-right: auto;
+    margin-left: var(--space-4);
+  }
+}
+
+.nav__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding-inline: var(--space-4);
+
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+
+  @include focus-ring;
+
+  &:hover {
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+  }
+}
+
+.nav__link--active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.shell__account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.shell__email {
+  display: none;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+
+  @include sm {
+    display: inline;
+  }
+}
+
+.theme-toggle__icon {
+  width: 1rem;
+  height: 1rem;
+  display: block;
+  animation: theme-icon-in var(--duration-fast) var(--ease-out);
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle__icon {
+    animation: none;
+  }
+}
+
+@keyframes theme-icon-in {
+  from {
+    opacity: 0;
+    transform: rotate(-20deg) scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+.shell__main {
+  display: block;
+  padding-block: var(--space-6) var(--space-8);
+
+  // The skip link targets this, so it must be focusable -- but a focus ring
+  // around the whole page is meaningless, so it is suppressed here specifically.
+  &:focus {
+    outline: none;
+  }
+}

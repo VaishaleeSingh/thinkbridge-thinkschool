@@ -1,0 +1,47 @@
+<app-card [interactive]="true">
+  <article
+    class="quote"
+    [style.background-image]="
+      'linear-gradient(140deg, rgb(8 16 30 / 76%), rgb(10 26 45 / 60%)), url(' +
+      backgroundImage() +
+      ')'
+    "
+  >
+    <button
+      type="button"
+      class="quote__open"
+      [attr.aria-label]="'Open and edit quote by ' + quote().author"
+      (click)="openRequested.emit(quote())"
+    >
+      <!--
+        A real <blockquote> with a <cite>: this is a quotation, and the elements
+        that say so are also what make it navigable and translatable. A pair of
+        styled divs would look identical and mean nothing.
+      -->
+      <blockquote class="quote__text">{{ quote().text }}</blockquote>
+
+      <div class="quote__meta">
+        <cite class="quote__author">{{ quote().author }}</cite>
+
+        @if (owned()) {
+          <app-badge tone="primary">yours</app-badge>
+        }
+      </div>
+    </button>
+
+    <footer class="quote__footer">
+      @if (deletable()) {
+        <app-button
+          variant="danger"
+          size="sm"
+          [loading]="deleting()"
+          loadingLabel="Deleting…"
+          [ariaLabel]="'Delete the quote by ' + quote().author"
+          (pressed)="deleteRequested.emit(quote())"
+        >
+          Delete
+        </app-button>
+      }
+    </footer>
+  </article>
+</app-card>
