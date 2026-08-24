@@ -26,22 +26,37 @@
 
       <ul class="picker__list">
         @for (quote of quotes(); track quote.id) {
-          <li class="picker__item" (click)="toggleSelectionFromRow(quote.id)">
-            <label class="picker__check" [attr.for]="'quote-' + quote.id">
-              <input
-                [id]="'quote-' + quote.id"
-                type="checkbox"
-                [disabled]="adding()"
-                [checked]="isSelected(quote.id)"
-                (change)="toggleSelection(quote.id, $any($event.target).checked)"
-                (click)="onCheckboxClick($event)"
-              />
-            </label>
+          <li class="picker__row">
+            <!--
+              The LABEL is the row, wrapping both the checkbox and the text.
+              That is what makes the whole row clickable and keyboard-operable
+              with no click handler of our own: a label activates the control it
+              contains, and the control is a real focusable <input>.
 
-            <div class="picker__text">
-              <p class="picker__quote">{{ quote.text }}</p>
-              <p class="picker__author">{{ quote.author }}</p>
-            </div>
+              What was here before was a (click) on the <li> PLUS a label with a
+              `for` pointing at the input inside it, and the two fought each
+              other. Clicking the label forwarded activation to the input (toggle
+              one) and the same click then bubbled to the <li> (toggle two), so
+              the selection landed back where it started and the batch button
+              stayed at "Add selected (0)" no matter how many rows were clicked.
+              A stopPropagation() on the input covered a direct hit on the box
+              itself, which is why it worked from some pixels and not others.
+            -->
+            <label class="picker__item">
+              <span class="picker__check">
+                <input
+                  type="checkbox"
+                  [disabled]="adding()"
+                  [checked]="isSelected(quote.id)"
+                  (change)="toggleSelection(quote.id, isChecked($event))"
+                />
+              </span>
+
+              <span class="picker__text">
+                <span class="picker__quote">{{ quote.text }}</span>
+                <span class="picker__author">{{ quote.author }}</span>
+              </span>
+            </label>
           </li>
         }
       </ul>

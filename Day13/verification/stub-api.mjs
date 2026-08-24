@@ -54,6 +54,20 @@ const mode = {
   // Forces the next POST /api/collections to fail with a 500 instead of
   // creating anything -- see the handler for why this exists.
   collectionCreateFails: false,
+
+  /**
+   * Per-id artificial latency for GET /api/quotes/{id}, as { [id]: milliseconds }.
+   *
+   * The one thing the detail page has to get right is what happens when two
+   * requests overlap -- open quote A, then quote B before A answers -- and that
+   * cannot be provoked against a healthy API: this endpoint answers in single
+   * digit milliseconds, so the second request is always issued after the first
+   * has already landed and the interleave never happens. Slowing ONE id lets the
+   * responses be forced to arrive in the opposite order to the clicks, which is
+   * the only way to observe whether the guard in QuoteDetailStore actually
+   * works rather than merely reading it and believing it.
+   */
+  quoteDetailDelayMs: {},
 };
 
 const users = new Map(); // email -> { id, password }
@@ -106,7 +120,18 @@ function seed() {
     // (the real API's pre-Day-3 rows). Both cases matter: the client must offer
     // delete for the second and not for the first.
     const createdByUserId = index < 3 ? '999' : null;
-    quotes.push({ id: nextQuoteId++, author, text, createdByUserId });
+
+    // backgroundImageUrl is not decoration here, it is contract. The real
+    // Quote.Create always resolves one (Quote.SelectDefaultBackground picks from
+    // six bundled files by a hash of author|text), so a quote WITHOUT this field
+    // is a shape the API cannot produce. The stub was still omitting it after
+    // the field was added, which meant every browser check was rendering quotes
+    // the API would never send -- exactly the drift this file's README warns
+    // about. Cycled rather than fixed to one value so a page of quotes exercises
+    // more than a single image path.
+    const backgroundImageUrl = `/quote-backgrounds/mountain-${(index % 6) + 1}.jpg`;
+
+    quotes.push({ id: nextQuoteId++, author, text, backgroundImageUrl, createdByUserId });
   });
 
   mode.quotes = 'ok';
@@ -114,6 +139,7 @@ function seed() {
   mode.expireCount = 0;
   mode.deleteFails = false;
   mode.collectionCreateFails = false;
+  mode.quoteDetailDelayMs = {};
 }
 
 seed();
@@ -391,6 +417,33 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  // GET /api/quotes/{id} -- 200 or 404, matching QuoteEndpointExtensions.
+  //
+  // Added because the detail page is the first screen to call it. Its absence
+  // here is why the endpoint had a typed client method in quotes-api.ts that no
+  // verification had ever exercised.
+  const detailMatch = /^\/api\/quotes\/(\d+)$/.exec(path);
+
+  if (detailMatch && request.method === 'GET') {
+    const id = Number(detailMatch[1]);
+    const quote = quotes.find((candidate) => candidate.id === id);
+
+    // Awaited BEFORE answering, and only for the id asked for, so a test can
+    // make one specific quote slow and leave every other request fast.
+    const delayMs = mode.quoteDetailDelayMs[id] ?? 0;
+
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    if (!quote) {
+      return send(response, 404, null, corsHeaders);
+    }
+
+    send(response, 200, quote, corsHeaders);
+    return;
+  }
+
   if (path === '/api/quotes' && request.method === 'POST') {
     const errors = {};
     const author = body.author;
@@ -404,7 +457,20 @@ const server = createServer(async (request, response) => {
 
     if (Object.keys(errors).length) return validationProblem(response, errors, corsHeaders);
 
-    const quote = { id: nextQuoteId++, author: author.trim(), text: text.trim(), createdByUserId: caller.sub };
+    // backgroundImageUrl is mandatory in the real Quote -- Quote.Create always
+    // resolves one, even when the caller sends none -- so a created quote
+    // missing it is a shape the API cannot produce. Without this, the card that
+    // renders the quote just created calls resolveQuoteBackgroundUrl on
+    // undefined and throws, which is what turned into "creating a quote closes
+    // the dialog and shows it first" failing and every check after it timing
+    // out on a card that never rendered.
+    const quote = {
+      id: nextQuoteId++,
+      author: author.trim(),
+      text: text.trim(),
+      backgroundImageUrl: body.backgroundImageUrl || '/quote-backgrounds/mountain-1.jpg',
+      createdByUserId: caller.sub,
+    };
     quotes.unshift(quote);
     send(response, 201, quote, { ...corsHeaders, location: `/api/quotes/${quote.id}` });
     return;
@@ -417,7 +483,9 @@ const server = createServer(async (request, response) => {
 
     if (index === -1) return send(response, 404, null, corsHeaders);
 
-    if (request.method === 'GET') return send(response, 200, quotes[index], corsHeaders);
+    // GET is handled earlier, by detailMatch above -- this block only reaches
+    // DELETE. Left as a guard rather than an assumption: a future verb added
+    // here without reading that block would silently be dead code.
 
     if (request.method === 'DELETE') {
       if (mode.deleteFails) {
@@ -430,11 +498,24 @@ const server = createServer(async (request, response) => {
         );
       }
 
-      // The real API's ownership rule: only the creator may delete, and a quote
-      // with no creator has no rule to enforce.
+      /*
+       * The real rule, from MustOwnQuoteHandler, is an equality check with no
+       * second branch:
+       *
+       *     callerId is not null && callerId == resource.CreatedByUserId
+       *
+       * This used to read `owner !== null && owner !== caller.sub`, which
+       * carried the same wrong belief the Angular unit tests carried until this
+       * review: that a null owner means "no rule applies", so anyone may
+       * delete it. It does not. A null CreatedByUserId simply never equals a
+       * real caller id, so the handler never succeeds for it and the real API
+       * answers 403. `owner !== caller.sub` alone expresses that correctly for
+       * every case -- null included, since null is never equal to a caller's
+       * actual id -- with no separate null branch needed.
+       */
       const owner = quotes[index].createdByUserId;
 
-      if (owner !== null && owner !== caller.sub) {
+      if (owner !== caller.sub) {
         return send(response, 403, null, corsHeaders);
       }
 

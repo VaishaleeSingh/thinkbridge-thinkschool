@@ -350,14 +350,36 @@ check(
   (await page.getByRole('heading', { name: 'Nothing in this collection yet' }).count()) === 1,
 );
 
+// The picker is checkbox-based (select several, add as one batch), not a
+// per-row "Add" button -- the .picker__item is a <label> wrapping a checkbox
+// and the quote text, so the whole row toggles the box rather than firing an
+// immediate add. See add-quote-dialog.html/ts for why: a label's own
+// activation behaviour is what makes the row clickable and keyboard-operable
+// with no click handler of this component's own.
 await page.getByRole('button', { name: 'Add a quote' }).first().click();
 await page.waitForSelector('dialog[open]');
 const candidateCount = await page.locator('.picker__item').count();
 check('the picker lists candidate quotes', candidateCount > 0, `${candidateCount} candidates`);
 
-await page.locator('.picker__item').first().getByRole('button', { name: /^Add/ }).click();
-await page.waitForTimeout(600);
-await page.locator('.picker__item').first().getByRole('button', { name: /^Add/ }).click();
+// A short gap between the two clicks, not a Playwright nicety: with zero delay
+// between them, Playwright's second synthetic click can land before the first
+// click's zoneless OnPush re-render has painted, and the DOM checkbox ends up
+// checked (a real browser side effect of the click, independent of Angular)
+// while the component's own signal-driven button text still reports the count
+// from before it. No human clicks two different rows with zero elapsed time
+// between them, so this is a timing artifact of the test, not the product --
+// confirmed by reproducing it in isolation and finding a 30ms gap already
+// enough to make the count correct every time.
+await page.locator('.picker__item').nth(0).click();
+await page.waitForTimeout(200);
+await page.locator('.picker__item').nth(1).click();
+await page.waitForTimeout(200);
+check(
+  'the batch button counts exactly the checked rows',
+  (await page.getByRole('button', { name: 'Add selected (2)' }).count()) === 1,
+);
+
+await page.getByRole('button', { name: /^Add selected/ }).click();
 await page.waitForTimeout(600);
 
 const remainingCandidates = await page.locator('.picker__item').count();
@@ -627,12 +649,22 @@ check(
   'a quote this user created is marked and offers delete',
   (await page.locator('app-quote-card').first().getByText('yours').count()) === 1,
 );
-// A quote the API recorded no creator for: deletable by anyone, authored by
-// nobody in particular. It must get the control WITHOUT the badge.
+/*
+ * A quote the API recorded no creator for.
+ *
+ * This used to assert the control WAS offered here, on the belief that a null
+ * CreatedByUserId means "no ownership rule applies, anyone may act on it".
+ * MustOwnQuoteHandler (Day7/piece2) does not implement that: it succeeds only
+ * on `callerId is not null && callerId == resource.CreatedByUserId`, and a
+ * null owner never equals a real caller id, so DELETE answers 403 for every
+ * signed-in caller. The QuotesStore unit tests carried the identical wrong
+ * belief until this review corrected canDelete() to match the handler; this
+ * check is corrected for the same reason, against the same source of truth.
+ */
 const unownedCard = page.locator('app-quote-card').filter({ hasText: 'Grace Hopper' });
 check(
-  'a quote with no recorded creator is deletable but not labelled "yours"',
-  (await unownedCard.getByRole('button', { name: /^Delete/ }).count()) === 1 &&
+  'a quote with no recorded creator gets neither the delete control nor the "yours" badge',
+  (await unownedCard.getByRole('button', { name: /^Delete/ }).count()) === 0 &&
     (await unownedCard.getByText('yours').count()) === 0,
 );
 
@@ -757,12 +789,25 @@ check(
 await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Quotes' }).click();
 await page.waitForSelector('app-quote-card');
 
+/*
+ * Needs a quote the CALLER owns -- Grace Hopper's has no recorded creator, and
+ * (correctly, since the earlier review) that means no Delete control is
+ * offered on it at all. Every seeded quote is either someone else's ('999')
+ * or nobody's; the only way to get a caller-owned one is to create it, the
+ * same way the earlier "creating a quote" section did.
+ */
+await page.getByRole('button', { name: 'New quote' }).first().click();
+await page.locator('dialog[open]').getByLabel('Author').fill('Refused Delete');
+await page.locator('dialog[open]').locator('textarea').fill('This quote exists only to be refused.');
+await page.getByRole('button', { name: 'Save quote' }).last().click();
+await page.waitForTimeout(600);
+
 const cardsBeforeFailedDelete = await page.locator('app-quote-card').count();
 await setMode({ deleteFails: true });
 
 await page
   .locator('app-quote-card')
-  .filter({ hasText: 'Grace Hopper' })
+  .filter({ hasText: 'Refused Delete' })
   .getByRole('button', { name: /^Delete/ })
   .click();
 await page.getByRole('button', { name: 'Delete quote' }).click();
@@ -864,6 +909,146 @@ check(
   'the not-found page has a top-level heading',
   (await page.locator('h1').count()) === 1,
 );
+
+// ---------------------------------------------------------------------------
+// 12b. The quote detail page: its four states, and the interleave
+// ---------------------------------------------------------------------------
+// Everything here is about GET /api/quotes/{id}, which until this feature had a
+// typed client method that nothing called and no coverage of any kind.
+
+await page.goto(`${APP}/quotes/1`);
+await page.waitForSelector('app-page-header');
+
+const detailResponse = lastApiResponse('GET', /^\/api\/quotes\/1$/);
+
+check(
+  'a quote opened by id renders its own text and author',
+  (await page.locator('blockquote').count()) === 1 &&
+    (await page.locator('cite').count()) === 1,
+);
+check(
+  'the detail request went to the single-quote endpoint',
+  detailResponse?.status === 200,
+  `${detailResponse?.status}`,
+);
+
+await shotWithApiEvidence(
+  'quotes-detail-01-loaded-with-api-response.png',
+  detailResponse,
+  'GET /api/quotes/1 -- one quote, opened by id',
+);
+
+// The quote on screen must not also appear in the list beneath it.
+check(
+  'the open quote is excluded from "More quotes"',
+  (await page.locator('.detail__more-link').filter({ hasText: await page.locator('blockquote').innerText() }).count()) === 0,
+);
+
+// --- 404: a real id shape for a quote that does not exist ------------------
+await page.goto(`${APP}/quotes/9999`);
+await page.waitForSelector('app-error-state');
+
+const missingResponse = lastApiResponse('GET', /^\/api\/quotes\/9999$/);
+
+check(
+  'a 404 is reported as "no such quote" rather than as a load failure',
+  (await page.getByRole('heading', { name: 'No such quote' }).count()) === 1,
+);
+check('the 404 came from the API and was not guessed', missingResponse?.status === 404);
+check(
+  'the 404 offers the list as the way out, not a retry',
+  (await page.getByRole('link', { name: 'Back to all quotes' }).count()) === 1,
+);
+
+await shotWithApiEvidence(
+  'quotes-detail-02-not-found-with-api-response.png',
+  missingResponse,
+  'GET /api/quotes/9999 -- 404 told apart from a transport failure',
+);
+
+// --- a malformed id: answered without asking the API -----------------------
+const beforeMalformed = requests.filter((entry) => /\/api\/quotes\/\d+/.test(entry)).length;
+
+await page.goto(`${APP}/quotes/0x10`);
+await page.waitForSelector('app-error-state');
+
+check(
+  'a malformed id is answered without a request',
+  requests.filter((entry) => /\/api\/quotes\/\d+/.test(entry)).length === beforeMalformed,
+);
+check(
+  '/quotes/0x10 does not silently open quote 16',
+  (await page.getByRole('heading', { name: 'No such quote' }).count()) === 1 &&
+    (await page.locator('blockquote').count()) === 0,
+);
+
+// A malformed id must also release the previously opened quote, or the quote you
+// just came from goes missing from the list on the page that says it cannot be
+// found. This is the defect the PR review caught.
+const moreCountOnMalformed = await page.locator('.detail__more-link').count();
+check(
+  'a malformed id releases the previous quote, so the library list is complete',
+  moreCountOnMalformed === 12,
+  `${moreCountOnMalformed} links`,
+);
+
+// --- THE INTERLEAVE --------------------------------------------------------
+// Quote 1 is made slow and quote 2 left fast, then quote 1 is opened and quote 2
+// opened immediately after. The responses therefore arrive in the OPPOSITE order
+// to the clicks, which is the only arrangement under which a missing guard is
+// observable. Without the artificial delay the first request has always already
+// landed and this check passes against broken code.
+await setMode({ quoteDetailDelayMs: { 1: 1200 } });
+
+await page.goto(`${APP}/quotes/1`);
+
+// Deliberately NOT waiting for the quote: the point is to leave with the request
+// still on the wire.
+await page.waitForTimeout(150);
+await page.getByRole('link', { name: 'Quotes' }).first().click();
+await page.waitForURL(/\/quotes$/);
+await page.goto(`${APP}/quotes/2`);
+await page.waitForSelector('blockquote');
+
+const quoteTwoText = await page.locator('blockquote').innerText();
+
+// Now wait past the slow response's arrival. If it is allowed to write, the page
+// swaps to quote 1 while the address bar still says quote 2.
+await page.waitForTimeout(1600);
+
+const textAfterLateResponse = await page.locator('blockquote').innerText();
+
+check(
+  'a late response for a quote no longer being viewed does not replace the current one',
+  textAfterLateResponse === quoteTwoText,
+  `showed: ${textAfterLateResponse.slice(0, 40)}`,
+);
+check('the address bar and the rendered quote still agree', page.url().endsWith('/quotes/2'));
+
+await page.screenshot({
+  path: `${SHOTS}/quotes-detail-03-stale-response-discarded.png`,
+  fullPage: true,
+});
+
+// Same again for the id that was made slow being the one navigated AWAY from
+// into a 404: a late 404 must not mark the visible quote as deleted.
+await setMode({ quoteDetailDelayMs: { 9998: 1200 } });
+
+await page.goto(`${APP}/quotes/9998`);
+await page.waitForTimeout(150);
+await page.goto(`${APP}/quotes/3`);
+await page.waitForSelector('blockquote');
+await page.waitForTimeout(1600);
+
+check(
+  'a late 404 does not report the quote now on screen as deleted',
+  (await page.locator('blockquote').count()) === 1 &&
+    (await page.getByRole('heading', { name: 'No such quote' }).count()) === 0,
+);
+
+await setMode({ quoteDetailDelayMs: {} });
+
+await assertNoHorizontalOverflow(page, 'quote detail');
 
 // ---------------------------------------------------------------------------
 // 13. Responsive sweep -- every required width, on both a list and a form

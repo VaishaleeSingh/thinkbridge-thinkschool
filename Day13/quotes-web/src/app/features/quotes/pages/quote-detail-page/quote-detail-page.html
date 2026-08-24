@@ -1,0 +1,107 @@
+<!--
+  A real link back to the list, as on the collection detail page: the browser's
+  back button only helps someone who arrived that way, and this page is
+  deep-linkable by design.
+-->
+<nav class="detail__breadcrumb" aria-label="Breadcrumb">
+  <a routerLink="/quotes">Quotes</a>
+</nav>
+
+<!--
+  The five states, mutually exclusive by construction -- each condition is a
+  computed() on the store (or, for the malformed-id case, on this page), so no
+  combination of signals can render two of them at once.
+
+  "No such quote" is tested FIRST, ahead of loading: the address bar is the
+  question being asked, and once it names something that cannot be a quote the
+  answer does not depend on a request that is still in flight for the quote
+  before it.
+-->
+@if (showNoSuchQuote()) {
+  <app-error-state title="No such quote" [message]="noSuchQuoteMessage()" [retryable]="false" />
+
+  <!--
+    Different recovery from the failure below, which is the point of telling a
+    404 apart from everything else: retrying cannot bring this quote back, so the
+    way out is the list.
+  -->
+  <p class="detail__recovery">
+    <a routerLink="/quotes">Back to all quotes</a>
+  </p>
+} @else if (store.showLoading()) {
+  <app-loader variant="spinner" label="Loading quote" />
+} @else if (store.showError()) {
+  @if (store.error(); as failure) {
+    <app-error-state
+      [title]="store.isUnreachable() ? 'Could not reach the API' : 'Could not load this quote'"
+      [message]="failure.message"
+      [retrying]="store.isLoading()"
+      (retry)="reload()"
+    />
+  }
+} @else if (store.showQuote()) {
+  @if (store.quote(); as quote) {
+    <app-page-header [title]="quote.author" [subtitle]="'Quote #' + quote.id" />
+
+    <article
+      class="quote-detail"
+      [style.background-image]="
+        'linear-gradient(140deg, rgb(8 16 30 / 78%), rgb(10 26 45 / 62%)), url(' +
+        backgroundImage() +
+        ')'
+      "
+    >
+      <!--
+        A <blockquote> with a <cite>, as on the card: this is a quotation, and
+        the elements that say so are what make it navigable and translatable.
+      -->
+      <blockquote class="quote-detail__text">{{ quote.text }}</blockquote>
+      <cite class="quote-detail__author">{{ quote.author }}</cite>
+    </article>
+  }
+} @else {
+  <app-empty-state
+    title="No quote open"
+    description="Choose a quote from the library and it will be shown here."
+  />
+}
+
+<!--
+  The library, always rendered: on a loaded quote it is a way to the next one,
+  and on a 404 or a failure it is the way out. This is also why both stores are
+  provided by this component -- the list and the detail are two requests that can
+  be in flight at the same time on this screen.
+-->
+<section class="detail__more" aria-labelledby="more-quotes-heading">
+  <h2 id="more-quotes-heading" class="detail__more-title">More quotes</h2>
+
+  @if (quotesStore.showLoading()) {
+    <app-loader label="Loading more quotes" [rows]="2" />
+  } @else if (quotesStore.showError()) {
+    @if (quotesStore.error(); as failure) {
+      <app-error-state
+        title="Could not load the library"
+        [message]="failure.message"
+        [retrying]="quotesStore.isLoading()"
+        (retry)="quotesStore.load()"
+      />
+    }
+  } @else if (otherQuotes().length === 0) {
+    <p class="detail__more-empty">There are no other quotes in the library yet.</p>
+  } @else {
+    <!--
+      track quote.id, never $index: tracking by position makes Angular reuse the
+      DOM of row 3 for whatever ends up at position 3 after a page change.
+    -->
+    <ul class="detail__more-list">
+      @for (quote of otherQuotes(); track quote.id) {
+        <li>
+          <a class="detail__more-link" [routerLink]="['/quotes', quote.id]">
+            <span class="detail__more-text">{{ quote.text }}</span>
+            <span class="detail__more-author">{{ quote.author }}</span>
+          </a>
+        </li>
+      }
+    </ul>
+  }
+</section>

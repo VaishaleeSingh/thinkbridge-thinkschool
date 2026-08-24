@@ -102,3 +102,31 @@ export const QUOTE_LIMITS = {
   authorMaxLength: 200,
   textMaxLength: 1000,
 } as const;
+
+/**
+ * The absolute URL to render a quote's background from.
+ *
+ * `backgroundImageUrl` comes back from the API as it was stored, which for the
+ * bundled backgrounds is a root-relative path like `/quote-backgrounds/x.jpg`.
+ * Root-relative against the API, not against this app: in development the two
+ * are different origins (see src/environments), so the path has to be resolved
+ * against API_BASE_URL or the browser asks the dev server for an image it does
+ * not have. An absolute URL is passed through untouched, because a quote may
+ * legitimately point at an image hosted anywhere.
+ *
+ * It lives beside the model rather than in each component because three places
+ * render a quote's background -- the card, the preview dialog and the detail
+ * page -- and three copies of this rule would be three chances for one of them
+ * to be fixed and the others not.
+ */
+export function resolveQuoteBackgroundUrl(url: string, apiBaseUrl: string): string {
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  if (url.startsWith('/')) {
+    return `${apiBaseUrl}${url}`;
+  }
+
+  return url;
+}

@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { PagedResult, Quote } from '../../../core/models/quote';
+import { DEFAULT_QUOTE_BACKGROUND_URL, PagedResult, Quote } from '../../../core/models/quote';
 import { AuthStore } from '../../../core/services/auth-store';
 import { QuotesApi } from '../../../core/services/quotes-api';
 import { QuotesStore } from './quotes-store';
@@ -25,6 +25,7 @@ function makeQuote(id: number, overrides: Partial<Quote> = {}): Quote {
     id,
     author: `Author ${id}`,
     text: `Text ${id}`,
+    backgroundImageUrl: DEFAULT_QUOTE_BACKGROUND_URL,
     createdByUserId: '1',
     ...overrides,
   };
@@ -178,7 +179,11 @@ describe('QuotesStore', () => {
     );
 
     const store = TestBed.inject(QuotesStore);
-    const fieldErrors = await store.create({ author: '', text: 'x' });
+    const fieldErrors = await store.create({
+      author: '',
+      text: 'x',
+      backgroundImageUrl: DEFAULT_QUOTE_BACKGROUND_URL,
+    });
 
     expect(fieldErrors['author']).toEqual(['Author is required.']);
 
@@ -193,20 +198,105 @@ describe('QuotesStore', () => {
     expect(store.canDelete(makeQuote(1, { createdByUserId: '1' }))).toBe(true);
     expect(store.canDelete(makeQuote(2, { createdByUserId: '99' }))).toBe(false);
 
-    // Null owner: the API's MustOwnQuoteHandler treats it as "no ownership rule
-    // applies" rather than as "nobody may touch this".
-    expect(store.canDelete(makeQuote(3, { createdByUserId: null }))).toBe(true);
+    /*
+     * Null owner: NOT deletable.
+     *
+     * This assertion used to expect `true`, on the belief -- stated in a comment
+     * here and still stated in Quote.cs's own XML doc -- that the API treats a
+     * null CreatedByUserId as "no ownership rule applies, so anyone may act on
+     * it". The handler does not do that. MustOwnQuoteHandler succeeds only on
+     *
+     *     callerId is not null && callerId == resource.CreatedByUserId
+     *
+     * and a null owner fails that comparison for every signed-in caller, so
+     * DELETE /api/quotes/{id} answers 403 for a legacy quote. Corrected here
+     * against the handler rather than against the comment: the store was right
+     * and the test was wrong, and "fixing" the store to satisfy this assertion
+     * would have shipped a delete button that always 403s.
+     */
+    expect(store.canDelete(makeQuote(3, { createdByUserId: null }))).toBe(false);
   });
 
   it('separates "may delete" from "wrote it"', () => {
     const store = TestBed.inject(QuotesStore);
     const unowned = makeQuote(1, { createdByUserId: null });
 
-    // Deletable, but not authored by this user -- so it gets the control and not
-    // the "yours" badge. Conflating the two labels every legacy quote as mine.
-    expect(store.canDelete(unowned)).toBe(true);
+    // A legacy quote is neither deletable by this caller nor authored by them,
+    // so it gets no delete control and no "yours" badge. The two questions are
+    // still distinct -- see the owned case below, where they diverge from a
+    // quote owned by somebody else.
+    expect(store.canDelete(unowned)).toBe(false);
     expect(store.isOwnedByCaller(unowned)).toBe(false);
 
     expect(store.isOwnedByCaller(makeQuote(2, { createdByUserId: '1' }))).toBe(true);
+    expect(store.isOwnedByCaller(makeQuote(3, { createdByUserId: '99' }))).toBe(false);
+  });
+
+  /*
+   * THE REGRESSION this pins: found via the browser harness while verifying an
+   * unrelated feature (the quote detail page), not by inspection. Forcing a
+   * refused delete produced "Could not load quotes / Only the person who
+   * created this quote can delete it" over a page of otherwise good quotes --
+   * both create() and remove() had reverted to writing every non-validation
+   * failure onto `failure` (the LOAD signal) directly, with no mutationFailure
+   * of their own. CollectionsStore's equivalent test and its own comments
+   * ("Mirrors QuotesStore", "same channel QuotesStore uses") describe exactly
+   * this store having the separation already -- it had regressed to not
+   * having it, silently, with nothing here to catch it.
+   */
+  it('THE BUG: a non-validation create failure must not blank the list behind showError', async () => {
+    api.getPage.mockResolvedValueOnce(makePage([makeQuote(1)]));
+
+    const store = TestBed.inject(QuotesStore);
+    await store.load();
+    expect(store.items()).toHaveLength(1);
+
+    api.create.mockRejectedValue(new HttpErrorResponse({ status: 401, error: null }));
+
+    const fieldErrors = await store.create({
+      author: 'Someone',
+      text: 'Something',
+      backgroundImageUrl: DEFAULT_QUOTE_BACKGROUND_URL,
+    });
+
+    expect(fieldErrors).toEqual({});
+    expect(store.showError()).toBe(false);
+    expect(store.items()).toHaveLength(1);
+    expect(store.actionError()?.status).toBe(401);
+  });
+
+  it('THE BUG, the delete half: a refused delete must not blank the list either', async () => {
+    api.getPage.mockResolvedValueOnce(makePage([makeQuote(1)]));
+
+    const store = TestBed.inject(QuotesStore);
+    await store.load();
+
+    api.delete.mockRejectedValue(
+      new HttpErrorResponse({ status: 403, error: { title: 'Forbidden' } }),
+    );
+
+    await store.remove(1);
+
+    expect(store.showError()).toBe(false);
+    expect(store.items()).toHaveLength(1);
+    expect(store.actionError()?.status).toBe(403);
+  });
+
+  it('dismissActionError clears a create/delete failure', async () => {
+    api.getPage.mockResolvedValue(makePage([]));
+
+    const store = TestBed.inject(QuotesStore);
+    await store.load();
+
+    api.create.mockRejectedValue(new HttpErrorResponse({ status: 500, error: null }));
+    await store.create({
+      author: 'Someone',
+      text: 'Something',
+      backgroundImageUrl: DEFAULT_QUOTE_BACKGROUND_URL,
+    });
+    expect(store.actionError()).not.toBeNull();
+
+    store.dismissActionError();
+    expect(store.actionError()).toBeNull();
   });
 });

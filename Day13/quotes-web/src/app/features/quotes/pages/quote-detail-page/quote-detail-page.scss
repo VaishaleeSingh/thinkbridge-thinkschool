@@ -1,0 +1,128 @@
+@use 'mixins' as *;
+
+// Same breadcrumb as the collection detail page, so the two detail screens read
+// as the same kind of place.
+.detail__breadcrumb {
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+
+  a {
+    color: var(--color-text-muted);
+    text-decoration: none;
+
+    &::before {
+      content: '←';
+      margin-right: var(--space-2);
+    }
+
+    &:hover {
+      color: var(--color-primary);
+    }
+  }
+}
+
+.detail__recovery {
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+
+  a {
+    color: var(--color-primary);
+  }
+}
+
+.quote-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  color: #f8fbff;
+
+  // Room for a 1000-character quote to breathe without the panel collapsing to
+  // the height of a two-word one.
+  min-height: 16rem;
+  justify-content: center;
+}
+
+.quote-detail__text {
+  margin: 0;
+  font-size: var(--text-xl);
+  line-height: var(--leading-normal);
+  color: #f8fbff;
+
+  // The API allows 1000 characters with no spaces in them; without this, one of
+  // those widens the page instead of wrapping.
+  word-break: break-word;
+  overflow-wrap: anywhere;
+
+  // Not clamped, unlike the card: this is the screen whose whole job is to show
+  // the quote in full.
+  padding-left: var(--space-4);
+  border-left: 3px solid rgb(140 230 255 / 92%);
+}
+
+.quote-detail__author {
+  font-style: normal;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  color: rgb(236 245 255 / 94%);
+}
+
+.detail__more {
+  margin-top: var(--space-7);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.detail__more-title {
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-4);
+}
+
+.detail__more-empty {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.detail__more-list {
+  display: grid;
+  gap: var(--space-3);
+
+  @include sm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.detail__more-link {
+  @include surface;
+  @include focus-ring;
+
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  height: 100%;
+  color: var(--color-text);
+  text-decoration: none;
+
+  &:hover {
+    background: var(--color-surface-hover);
+    border-color: var(--color-border-strong);
+  }
+}
+
+.detail__more-text {
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+
+  // Two lines is enough to recognise a quote by; more would make the list of
+  // them a page of its own.
+  @include clamp-lines(2);
+}
+
+.detail__more-author {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}

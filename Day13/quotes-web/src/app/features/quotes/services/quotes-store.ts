@@ -53,6 +53,20 @@ export class QuotesStore {
   private readonly updating = signal(false);
   private readonly deletingQuoteId = signal<number | null>(null);
 
+  /**
+   * A create, update or delete that failed for a reason OTHER than a
+   * validation problem -- a 401, a 403, a 500. Kept apart from `failure`
+   * (a failed LOAD) for the reason recorded on CollectionsStore's own copy of
+   * this signal, which this one is the original of: collapsing the two meant a
+   * refused mutation blanked the entire page behind "Could not load quotes",
+   * which reads as the whole screen breaking rather than as one action being
+   * refused. Verified directly -- forcing a delete to 403 with this signal
+   * removed reproduces exactly that: "Could not load quotes / Only the person
+   * who created this quote can delete it" replacing a page of otherwise
+   * perfectly good quotes.
+   */
+  private readonly mutationFailure = signal<ApiFailure | null>(null);
+
   // --- Readonly projections --------------------------------------------------
   readonly page = this.pageNumber.asReadonly();
   readonly size = this.pageSize.asReadonly();
@@ -63,6 +77,7 @@ export class QuotesStore {
   readonly isCreating = this.creating.asReadonly();
   readonly isUpdating = this.updating.asReadonly();
   readonly deletingId = this.deletingQuoteId.asReadonly();
+  readonly actionError = this.mutationFailure.asReadonly();
 
   /**
    * The rows to render: the fetched page, narrowed by the query.
@@ -155,6 +170,7 @@ export class QuotesStore {
   async load(): Promise<void> {
     this.loading.set(true);
     this.failure.set(null);
+    this.mutationFailure.set(null);
 
     try {
       const result = await this.api.getPage(this.pageNumber(), this.pageSize());
@@ -227,12 +243,13 @@ export class QuotesStore {
       const failure = toApiFailure(error);
 
       // A validation problem belongs on the form's fields. Anything else (a 401,
-      // a 500) is a page-level failure and is surfaced as one.
+      // a 500) is an ACTION failure, not a page failure -- see mutationFailure's
+      // own comment for what setting `failure` here used to do.
       if (Object.keys(failure.fieldErrors).length > 0) {
         return failure.fieldErrors;
       }
 
-      this.failure.set(failure);
+      this.mutationFailure.set(failure);
       return {};
     } finally {
       this.creating.set(false);
@@ -257,7 +274,7 @@ export class QuotesStore {
         return failure.fieldErrors;
       }
 
-      this.failure.set(failure);
+      this.mutationFailure.set(failure);
       return {};
     } finally {
       this.updating.set(false);
@@ -280,9 +297,16 @@ export class QuotesStore {
 
       await this.load();
     } catch (error) {
-      this.failure.set(toApiFailure(error));
+      // Can legitimately 403 -- MustOwnQuoteHandler refuses a delete on a quote
+      // this caller does not own -- and that must not clear the list either.
+      this.mutationFailure.set(toApiFailure(error));
     } finally {
       this.deletingQuoteId.set(null);
     }
+  }
+
+  /** Clears a create/update/delete failure once it has been seen. */
+  dismissActionError(): void {
+    this.mutationFailure.set(null);
   }
 }

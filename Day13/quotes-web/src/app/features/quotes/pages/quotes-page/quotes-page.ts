@@ -17,8 +17,12 @@ import { QUOTE_PAGE_SIZES, QuotesStore } from '../../services/quotes-store';
  * The quotes screen.
  *
  * Everything below is composition and intent -- the page holds no list, no
- * counts and no loading flags. All of that is QuotesStore, provided by this
- * route (see app.routes.ts) so it is created on arrival and destroyed on leaving.
+ * counts and no loading flags. All of that is QuotesStore, provided by THIS
+ * COMPONENT below, so it is created when the component is and destroyed with
+ * it -- not by the route (see app.routes.ts for why route-level `providers`
+ * looks like the same lifecycle and is not, and for the regression this file
+ * itself shipped when it briefly disagreed with app.routes.ts's own doc
+ * comment about it).
  *
  * The only state that lives here is which dialog is open, because that is not a
  * fact about quotes: it belongs to this screen and nothing else needs it.
@@ -28,6 +32,7 @@ import { QUOTE_PAGE_SIZES, QuotesStore } from '../../services/quotes-store';
   templateUrl: './quotes-page.html',
   styleUrl: './quotes-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [QuotesStore],
   imports: [
     Button,
     Loader,
@@ -68,6 +73,11 @@ export class QuotesPage implements OnInit {
   protected openCreate(): void {
     this.editingQuote.set(null);
     this.createFieldErrors.set({});
+
+    // A failure from the last attempt should not still be on screen while the
+    // user makes the next one -- collections-page.ts makes the same call for
+    // the same reason.
+    this.store.dismissActionError();
     this.isCreateOpen.set(true);
   }
 

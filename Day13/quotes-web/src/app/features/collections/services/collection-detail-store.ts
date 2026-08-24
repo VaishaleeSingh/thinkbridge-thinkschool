@@ -76,6 +76,34 @@ export class CollectionDetailStore {
     }
   }
 
+  /**
+   * For a route id that was never a valid positive integer -- "not-a-number",
+   * "-1", "1.5". There is no request to make here, so this cannot go through
+   * `load()`'s catch block: without this method, that case fell through every
+   * signal untouched, and the page rendered its SUCCESS branch on a null
+   * collection -- an empty header, a "0 of 50" badge, an empty list, with no
+   * loading, no empty and no error state able to describe what actually
+   * happened (nothing was ever asked for). Caught by verify-ui.mjs navigating
+   * to /collections/not-a-number and finding no app-error-state.
+   *
+   * Modelled as a synthetic 404-shaped ApiFailure rather than a fourth boolean
+   * signal: this id can never resolve to a collection, which is exactly what
+   * 404 already means to every consumer of `error()` and `showError()` --
+   * status 404 also makes the template's existing `retryable: status !== 404`
+   * check do the right thing for free, since retrying an id that was never a
+   * number would just fail the same way again.
+   */
+  markInvalidId(): void {
+    this.loading.set(false);
+    this.detail.set(null);
+    this.mutationFailure.set(null);
+    this.failure.set({
+      status: 404,
+      message: 'That collection address is not valid.',
+      fieldErrors: {},
+    });
+  }
+
   async addQuote(quoteId: number): Promise<boolean> {
     const collection = this.detail();
 
