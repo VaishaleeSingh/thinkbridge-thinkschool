@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DOCUMENT,
+  DestroyRef,
   ElementRef,
   effect,
   inject,
@@ -44,6 +45,7 @@ import { Button } from '../button/button';
 })
 export class Modal {
   private readonly document = inject(DOCUMENT);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly open = input(false);
   readonly title = input.required<string>();
@@ -92,6 +94,27 @@ export class Modal {
     // here rather than a style somewhere.
     effect(() => {
       this.document.body.classList.toggle('has-modal', this.open());
+    });
+
+    // THE BUG THIS GUARDS AGAINST: every confirm dialog in this app is rendered
+    // inside an @if block bound to [open]="true" -- cancelling sets the
+    // controlling signal back to null, which DESTROYS this component rather
+    // than closing it (onClose()/the `closed` output are never reached at all).
+    // An effect's cleanup only runs on its NEXT execution or on destroy, and
+    // destroy does not re-run the effect body one more time with `open()` false
+    // -- it just stops it. So the class this effect had set stayed on <body>
+    // forever, and the page behind could not be scrolled again until a reload,
+    // after every single cancel in the application. Caught by "the scroll lock
+    // is released when a dialog is destroyed while open" in verify-ui.mjs,
+    // which is the one case a still-open, closed-not-destroyed dialog cannot
+    // exercise.
+    //
+    // A real dialog closed properly (Escape, the backdrop, the close button)
+    // still runs the effect above one more time with `open()` false first, so
+    // this is a deliberate backstop for the destroy path specifically, not a
+    // replacement for it.
+    this.destroyRef.onDestroy(() => {
+      this.document.body.classList.remove('has-modal');
     });
   }
 

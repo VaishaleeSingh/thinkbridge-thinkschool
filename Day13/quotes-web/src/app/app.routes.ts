@@ -1,16 +1,13 @@
 import { Routes } from '@angular/router';
 
 import { authGuard, guestGuard } from './core/guards/auth-guard';
-import { CollectionDetailStore } from './features/collections/services/collection-detail-store';
-import { CollectionsStore } from './features/collections/services/collections-store';
-import { QuotesStore } from './features/quotes/services/quotes-store';
 
 /**
  * The route table, and deliberately nothing else -- every page is loaded with
  * loadComponent, so this file imports no page components and stays readable as a
  * map of the application.
  *
- * THREE THINGS ARE EXPRESSED HERE RATHER THAN IN COMPONENTS:
+ * TWO THINGS ARE EXPRESSED HERE RATHER THAN IN COMPONENTS:
  *
  * 1. Which chrome a route gets. The authenticated routes are children of
  *    MainLayout; /sign-in is a child of AuthLayout. Neither layout needs an @if
@@ -19,10 +16,20 @@ import { QuotesStore } from './features/quotes/services/quotes-store';
  * 2. Who may enter. authGuard on the parent covers every child, so a page added
  *    later is protected by default rather than by someone remembering.
  *
- * 3. How long feature state lives. `providers` on a route creates the store when
- *    the route is entered and destroys it when it is left, which is why the stores
- *    are not `providedIn: 'root'`: signing out and back in cannot show the
- *    previous session's data, because the store holding it no longer exists.
+ * WHAT IS DELIBERATELY *NOT* HERE: the feature stores. This file has regressed
+ * to `providers` on these routes before -- with a rewritten version of THIS
+ * comment claiming that entering the route created the store and leaving it
+ * destroyed it. That is not what route providers do: Angular creates that
+ * environment injector once and caches it on the route config, so the store
+ * outlives every activation. The regression was caught again by
+ * verify-ui.mjs's "returning to a page starts it at page 1, not where it was
+ * left" -- paging QuotesStore to page 2, leaving for /collections, and coming
+ * back showed page 2 again, with the previous page's rows still in memory.
+ *
+ * Each page provides its own store instead (`providers` on the @Component),
+ * which IS created and destroyed with the component -- the lifecycle every
+ * comment in this codebase, including the ones that got rewritten, actually
+ * wants. See QuotesPage, CollectionsPage and CollectionDetailPage.
  *
  * Lazy loading is per page, not per feature: these are small screens, and a
  * feature-level bundle would mean loading the collection detail page in order to
@@ -57,14 +64,22 @@ export const routes: Routes = [
       {
         path: 'quotes',
         title: 'Quotes',
-        providers: [QuotesStore],
         loadComponent: () =>
           import('./features/quotes/pages/quotes-page/quotes-page').then((m) => m.QuotesPage),
       },
       {
+        // One quote, by id. QuoteDetailStore's lifetime is a viewing of that
+        // quote, provided on the page component -- see QuoteDetailPage.
+        path: 'quotes/:id',
+        title: 'Quote · Quotes',
+        loadComponent: () =>
+          import('./features/quotes/pages/quote-detail-page/quote-detail-page').then(
+            (m) => m.QuoteDetailPage,
+          ),
+      },
+      {
         path: 'collections',
         title: 'Collections · Quotes',
-        providers: [CollectionsStore],
         loadComponent: () =>
           import('./features/collections/pages/collections-page/collections-page').then(
             (m) => m.CollectionsPage,
@@ -73,12 +88,6 @@ export const routes: Routes = [
       {
         path: 'collections/:id',
         title: 'Collection · Quotes',
-
-        // QuotesStore again, because the "add a quote" picker needs a list of
-        // quotes and that store already fetches, pages and filters them. A
-        // second, picker-specific service would be the same code with a
-        // different name.
-        providers: [CollectionDetailStore, QuotesStore],
         loadComponent: () =>
           import('./features/collections/pages/collection-detail-page/collection-detail-page').then(
             (m) => m.CollectionDetailPage,

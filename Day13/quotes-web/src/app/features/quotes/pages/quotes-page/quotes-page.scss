@@ -42,6 +42,10 @@
   max-width: 58ch;
 }
 
+.quotes__action-error {
+  margin-top: var(--space-5);
+}
+
 .quotes__results {
   display: grid;
   gap: var(--space-5);

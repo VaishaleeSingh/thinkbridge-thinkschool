@@ -43,6 +43,9 @@ const PICKER_PAGE_SIZE = 48;
   templateUrl: './collection-detail-page.html',
   styleUrl: './collection-detail-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // Component-scoped, not route-scoped: see app.routes.ts's own comment on why
+  // route-level `providers` looks like per-activation lifetime and is not.
+  providers: [CollectionDetailStore, QuotesStore],
   imports: [
     RouterLink,
     PageHeader,
@@ -84,6 +87,11 @@ export class CollectionDetailPage implements OnInit {
     if (Number.isFinite(id) && id > 0) {
       this.collectionId = id;
       void this.store.load(id);
+    } else {
+      // Not a positive integer -- "not-a-number", "-1", "1.5". No request to
+      // make, so the store needs telling directly: see markInvalidId's own
+      // comment for what silently doing nothing here used to render instead.
+      this.store.markInvalidId();
     }
 
     // Loads the candidate pool. setSize also fetches, so this is one request

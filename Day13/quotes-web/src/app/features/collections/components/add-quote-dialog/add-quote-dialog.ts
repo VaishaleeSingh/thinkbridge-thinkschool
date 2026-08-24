@@ -99,12 +99,15 @@ export class AddQuoteDialog {
     });
   }
 
-  protected toggleSelectionFromRow(quoteId: number): void {
-    this.toggleSelection(quoteId, !this.isSelected(quoteId));
-  }
-
-  protected onCheckboxClick(event: Event): void {
-    event.stopPropagation();
+  /**
+   * The checked state off a change event, typed.
+   *
+   * Exists so the template does not need `$any($event.target).checked` -- an
+   * `any` in a template is worse than one in a class, because nothing
+   * type-checks it and nothing greps for it.
+   */
+  protected isChecked(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
   }
 
   protected addSelectedQuotes(): void {

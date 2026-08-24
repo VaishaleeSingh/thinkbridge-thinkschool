@@ -1,3 +1,15 @@
+<!--
+  EmptyState's own title renders as an h3, which is right when it sits inside a
+  page that already has its own h1 (app-page-header). This page has no other
+  heading, so without this the document outline has no h1 at all -- a real
+  accessibility gap verify-ui.mjs's own heading check caught. Worded
+  differently from EmptyState's h3 below ("That page does not exist") on
+  purpose: an assistive-tech user landing on either heading should not read
+  the exact same sentence twice, and a page listing its headings by name
+  should not see two identical entries for one page.
+-->
+<h1 class="u-visually-hidden">Page not found</h1>
+
 <app-empty-state
   title="That page does not exist"
   description="The address does not match any screen in this application."

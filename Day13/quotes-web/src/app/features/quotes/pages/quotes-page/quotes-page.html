@@ -22,6 +22,22 @@
 />
 
 <!--
+  A create, update or delete that failed. Separate from the load error below,
+  and rendered above the list rather than instead of it, because the list is
+  still correct and one action did not happen -- collections-page's own copy
+  of this banner is explicitly modelled on this one.
+-->
+@if (store.actionError(); as failure) {
+  <div class="quotes__action-error">
+    <app-error-state
+      title="That action did not work"
+      [message]="failure.message"
+      [retryable]="false"
+    />
+  </div>
+}
+
+<!--
   The four states, mutually exclusive by construction: each condition is a
   computed() on the store (see its "view states" block), so there is no
   combination of signals that renders two of these at once.
