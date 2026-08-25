@@ -68,6 +68,22 @@ export const routes: Routes = [
           import('./features/quotes/pages/quotes-page/quotes-page').then((m) => m.QuotesPage),
       },
       {
+        // A standalone, additive demo of the same three quote fields built
+        // with the experimental `@angular/forms/signals` preview API --
+        // does not replace or touch how 'quotes' creates a quote. See
+        // QuoteFormSignalDemo and docs/day14-task2-comparison.md.
+        //
+        // Must come before 'quotes/:id': that param route would otherwise
+        // match this literal path first, with 'signal-forms-demo' read as
+        // an id.
+        path: 'quotes/signal-forms-demo',
+        title: 'Signal Forms demo · Quotes',
+        loadComponent: () =>
+          import(
+            './features/quotes/components/quote-form-signal-demo/quote-form-signal-demo'
+          ).then((m) => m.QuoteFormSignalDemo),
+      },
+      {
         // One quote, by id. QuoteDetailStore's lifetime is a viewing of that
         // quote, provided on the page component -- see QuoteDetailPage.
         path: 'quotes/:id',

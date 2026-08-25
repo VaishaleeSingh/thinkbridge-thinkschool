@@ -1,0 +1,112 @@
+<section class="signal-demo" aria-label="Signal Forms demo">
+  <h1>Signal Forms demo</h1>
+  <p class="signal-demo__note">
+    The same author/text/background fields as the "New quote" dialog, rebuilt
+    with the experimental <code>@angular/forms/signals</code> preview API
+    instead of reactive forms. Submitting always simulates a 900ms request,
+    and always simulates the server rejecting the selected background --
+    change the background to a different option and resubmit to see it save.
+  </p>
+
+  <form class="signal-demo__form" (submit)="$event.preventDefault(); onSubmit()" novalidate>
+    <div class="field">
+      <label class="field__label" for="sf-author">
+        <span>Author</span>
+        @if (isRequired(quoteForm.author)) {
+          <span class="field__required" aria-hidden="true">*</span>
+          <span class="u-visually-hidden">(required)</span>
+        }
+      </label>
+
+      <input
+        id="sf-author"
+        class="field__input"
+        [class.field__input--invalid]="hasError(quoteForm.author)"
+        type="text"
+        placeholder="Seneca"
+        [attr.aria-describedby]="hasError(quoteForm.author) ? 'sf-author-error' : null"
+        [attr.aria-invalid]="hasError(quoteForm.author) ? 'true' : null"
+        [formField]="quoteForm.author"
+      />
+
+      @if (hasError(quoteForm.author)) {
+        <p class="field__error" id="sf-author-error">{{ errorMessage(quoteForm.author) }}</p>
+      }
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="sf-text">
+        <span>Quote</span>
+        @if (isRequired(quoteForm.text)) {
+          <span class="field__required" aria-hidden="true">*</span>
+          <span class="u-visually-hidden">(required)</span>
+        }
+      </label>
+
+      <textarea
+        id="sf-text"
+        class="field__input field__input--textarea"
+        [class.field__input--invalid]="hasError(quoteForm.text)"
+        rows="5"
+        placeholder="What it actually says…"
+        [attr.aria-describedby]="hasError(quoteForm.text) ? 'sf-text-error' : null"
+        [attr.aria-invalid]="hasError(quoteForm.text) ? 'true' : null"
+        [formField]="quoteForm.text"
+      ></textarea>
+
+      @if (hasError(quoteForm.text)) {
+        <p class="field__error" id="sf-text-error">{{ errorMessage(quoteForm.text) }}</p>
+      }
+    </div>
+
+    <div class="field">
+      <label class="field__label" for="sf-background">
+        <span>Background</span>
+        @if (isRequired(quoteForm.backgroundImageUrl)) {
+          <span class="field__required" aria-hidden="true">*</span>
+          <span class="u-visually-hidden">(required)</span>
+        }
+      </label>
+
+      <select
+        id="sf-background"
+        class="field__input field__input--select"
+        [class.field__input--invalid]="hasError(quoteForm.backgroundImageUrl)"
+        [attr.aria-describedby]="hasError(quoteForm.backgroundImageUrl) ? 'sf-background-error' : 'sf-background-hint'"
+        [attr.aria-invalid]="hasError(quoteForm.backgroundImageUrl) ? 'true' : null"
+        [formField]="quoteForm.backgroundImageUrl"
+      >
+        @for (option of backgroundOptions; track option.url) {
+          <option [value]="option.url">{{ option.label }}</option>
+        }
+      </select>
+
+      @if (hasError(quoteForm.backgroundImageUrl)) {
+        <p class="field__error" id="sf-background-error">
+          {{ errorMessage(quoteForm.backgroundImageUrl) }}
+        </p>
+      } @else {
+        <p class="field__hint" id="sf-background-hint">
+          Choose a background style for this quote card.
+        </p>
+      }
+    </div>
+
+    <div class="signal-demo__actions">
+      <button type="button" [disabled]="quoteForm().submitting()" (click)="onCancel()">
+        Cancel
+      </button>
+
+      <button type="submit" [disabled]="quoteForm().submitting()">
+        {{ quoteForm().submitting() ? 'Saving…' : 'Save quote' }}
+      </button>
+    </div>
+  </form>
+
+  @if (savedRequest(); as saved) {
+    <section class="signal-demo__result" aria-live="polite">
+      <h2>Saved (simulated)</h2>
+      <pre>{{ saved | json }}</pre>
+    </section>
+  }
+</section>

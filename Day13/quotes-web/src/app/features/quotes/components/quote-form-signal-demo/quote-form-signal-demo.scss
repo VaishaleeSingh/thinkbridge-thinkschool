@@ -1,0 +1,42 @@
+@use 'field' as *;
+
+@include field-styles;
+
+.signal-demo {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+  display: grid;
+  gap: var(--space-5);
+}
+
+.signal-demo__note {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.signal-demo__note code {
+  font-family: var(--font-mono, monospace);
+}
+
+.signal-demo__form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.signal-demo__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.signal-demo__result {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.signal-demo__result pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
