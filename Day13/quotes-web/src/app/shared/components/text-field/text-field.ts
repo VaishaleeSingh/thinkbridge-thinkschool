@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, input, viewChild } from '@angular/core';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { firstValidationMessage } from '../../forms/validation-messages';
@@ -45,6 +45,13 @@ export class TextField {
   protected readonly inputId = nextId('text-field');
   protected readonly hintId = `${this.inputId}-hint`;
   protected readonly errorId = `${this.inputId}-error`;
+
+  private readonly inputRef = viewChild.required<ElementRef<HTMLInputElement>>('input');
+
+  /** Moves keyboard/screen-reader focus to the native input, e.g. after an invalid submit. */
+  focus(): void {
+    this.inputRef().nativeElement.focus();
+  }
 
   /**
    * Plain methods, NOT computed(): a FormControl is not a signal, so a computed

@@ -15,6 +15,26 @@ import { nextId } from '../../utils/unique-id';
 import { Button } from '../button/button';
 
 /**
+ * Focuses the first focusable descendant of `root`, skipping disabled and
+ * negative-tabindex elements. A hand-rolled "what counts as focusable" list
+ * rather than a full CSS `:focusable` (unsupported in the targeted browsers)
+ * -- covers every control this app actually puts in a dialog body: native
+ * form fields and buttons/links. Does nothing if `root` is null (a confirm
+ * dialog with no body content) or has nothing focusable in it.
+ */
+function focusFirstFocusable(root: Element | null): void {
+  if (!root) {
+    return;
+  }
+
+  const candidate = root.querySelector<HTMLElement>(
+    'input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+  );
+
+  candidate?.focus();
+}
+
+/**
  * The application's dialog, built on the native <dialog> element opened with
  * showModal().
  *
@@ -82,6 +102,26 @@ export class Modal {
       // emitted as a user-initiated dismissal.
       if (shouldBeOpen && !element.open) {
         element.showModal();
+
+        // THE BUG THIS GUARDS AGAINST: showModal()'s own autofocus algorithm
+        // focuses the first focusable element in TREE order inside the dialog
+        // when nothing carries the `autofocus` attribute. In modal.html the
+        // header (with the "Close dialog" button) is a sibling of the body
+        // that comes first, so every dialog in this app -- including a form
+        // with several fields -- opened with focus already sitting on the X.
+        // For a keyboard user that is at best one wasted Tab and at worst a
+        // dismissed dialog: Enter is a natural first keystroke (confirming a
+        // delete, starting to type a value) and Enter activates whatever
+        // button focus happens to be on. Caught by keyboard-driving the "New
+        // quote" dialog for Day 14's form-focus verification: pressing Enter
+        // immediately after open closed the dialog instead of submitting it.
+        //
+        // Moving focus into the body explicitly, one microtask after
+        // showModal() so the dialog's own focus step has already happened and
+        // this is the one that sticks. Falls back to doing nothing (leaving
+        // the browser's default -- the close button) for a dialog whose body
+        // has no focusable content at all, e.g. a plain confirmation message.
+        queueMicrotask(() => focusFirstFocusable(element.querySelector('.dialog__body')));
       } else if (!shouldBeOpen && element.open) {
         element.close();
       }

@@ -140,6 +140,8 @@ function seed() {
   mode.deleteFails = false;
   mode.collectionCreateFails = false;
   mode.quoteDetailDelayMs = {};
+  mode.quoteBackgroundRejected = false;
+  mode.quoteCreateDelayMs = 0;
 }
 
 seed();
@@ -455,7 +457,24 @@ const server = createServer(async (request, response) => {
     if (!text || !text.trim()) errors.text = ['Text is required.'];
     else if (text.length > 1000) errors.text = ['Text must be 1000 characters or less.'];
 
+    // Lets a browser check force the ONE server-side rejection the client
+    // cannot produce itself (backgroundImageUrl always comes from the select's
+    // own fixed option list, so it can never fail client validation) -- needed
+    // to prove the form's focus-on-server-error path for a field the client
+    // thought was fine. One-shot: cleared after firing, so it does not also
+    // reject the retry that follows it in the same check.
+    if (mode.quoteBackgroundRejected && !errors.author && !errors.text) {
+      errors.backgroundImageUrl = [
+        'Background image URL must point to a backend-hosted /quote-backgrounds file.',
+      ];
+      mode.quoteBackgroundRejected = false;
+    }
+
     if (Object.keys(errors).length) return validationProblem(response, errors, corsHeaders);
+
+    if (mode.quoteCreateDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, mode.quoteCreateDelayMs));
+    }
 
     // backgroundImageUrl is mandatory in the real Quote -- Quote.Create always
     // resolves one, even when the caller sends none -- so a created quote

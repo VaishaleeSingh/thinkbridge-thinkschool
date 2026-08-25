@@ -14,3 +14,6 @@ CoverageReport/
 # local scratch
 _to_delete/
 *.log
+
+# dependency installs (Day13 verification tooling: playwright, axe-core, angular/cli)
+node_modules/
