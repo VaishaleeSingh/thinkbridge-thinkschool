@@ -7,6 +7,7 @@ This folder holds three things:
 | `stub-api.mjs` | A stand-in for the real Quotes API, used only for testing |
 | `verify-ui.mjs` | Opens the app in a real (headless) browser and checks the whole thing — sign in, quotes, collections, paging, etc. |
 | `verify-quote-form.mjs` | Same idea, but focused on the "New quote" form — keyboard use, screen-reader wiring, and what happens when it fails |
+| `verify-signal-form-demo.mjs` | Same idea again, but for the experimental Signal Forms version of that same form (see below) |
 | `screenshots/` | Pictures the scripts took while running, as proof |
 
 Neither script is part of the actual app. The app never imports them and
@@ -43,6 +44,30 @@ and fixed. Two were:
   can delete this" — so there was no way to test "you can't delete someone
   else's quote" until a properly-owned quote was added to the test data.
 
+## What's the Signal Forms demo, in plain words
+
+The "New quote" form in the real app is built with **reactive forms**,
+Angular's long-standing way of building forms. Angular is now trying out a
+new, experimental way to build forms called **Signal Forms** — it isn't
+finished or officially recommended yet, but it's worth trying so we know
+what it's actually like, not just what the docs claim.
+
+So there's a second, throwaway copy of the exact same "New quote" form
+(same 3 fields, same rules — an author, the quote text, a background
+picture) built with Signal Forms instead. It lives at its own page,
+`/quotes/signal-forms-demo`, and doesn't touch or replace the real form in
+any way — it's there purely so the two can be compared side by side. It's
+not linked from anywhere in the app's normal navigation; you have to type
+the URL in directly.
+
+`verify-signal-form-demo.mjs` checks this second form the same way
+`verify-quote-form.mjs` checks the real one: empty submit, a whitespace-only
+name, text that's too long, what happens while it's saving, and what
+happens if the server says no. `docs/day14-task2-comparison.md` (one level
+up) writes out, in plain terms, where the new way was actually simpler and
+where it was actually more work — based on what happened while building it,
+not a guess.
+
 ## How to run it
 
 Open three terminals:
@@ -60,6 +85,7 @@ npm install                      # only needed the first time (installs Playwrig
 npx playwright install chromium  # also only needed the first time
 node verify-ui.mjs               # checks the whole app
 node verify-quote-form.mjs       # checks just the "New quote" form
+node verify-signal-form-demo.mjs # checks the experimental Signal Forms copy of that form
 ```
 
 Each line printed is one check: `PASS` or `FAIL`, plus a short note on what
