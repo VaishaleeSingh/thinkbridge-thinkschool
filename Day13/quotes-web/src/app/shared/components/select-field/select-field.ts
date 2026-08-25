@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, input, viewChild } from '@angular/core';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { firstValidationMessage } from '../../forms/validation-messages';
@@ -35,6 +35,13 @@ export class SelectField {
   protected readonly inputId = nextId('select-field');
   protected readonly hintId = `${this.inputId}-hint`;
   protected readonly errorId = `${this.inputId}-error`;
+
+  private readonly selectRef = viewChild.required<ElementRef<HTMLSelectElement>>('select');
+
+  /** Moves keyboard/screen-reader focus to the native select, e.g. after an invalid submit. */
+  focus(): void {
+    this.selectRef().nativeElement.focus();
+  }
 
   protected isRequired(): boolean {
     return this.control().hasValidator(Validators.required);

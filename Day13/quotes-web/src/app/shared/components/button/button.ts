@@ -75,6 +75,24 @@ export class Button {
     // Belt and braces: the attribute already prevents it, but a disabled
     // button that emits anyway is the kind of bug that only shows up as a
     // duplicate row in the database.
+    //
+    // WHY THIS CHECK CAN'T CLOSE EVERY GAP, AND WHY THAT'S FINE: `isDisabled()`
+    // reads `loading()`, a signal INPUT refreshed by change detection, not the
+    // instant the underlying signal changes -- so two `click` events dispatched
+    // with literally nothing between them (same task, same microtask) can both
+    // read "not loading yet". A fixed-delay guard was tried here to close that
+    // gap and reverted: it also blocked a legitimate SECOND, separate click on
+    // this same button minutes apart in normal use (caught immediately by
+    // verify-ui.mjs's own "New collection" flow, clicked twice, once per
+    // collection, well inside any fixed cooldown short enough to be invisible
+    // to a real double-click). A REAL double-click, or two Enter presses,
+    // always has at least one full browser task between the two `click`
+    // events -- which is exactly where this guard's `loading()` read gets a
+    // chance to catch up, since that binding refresh is also a microtask/task
+    // away, not an animation frame or more. The gap only exists for two events
+    // dispatched with zero yield between them, which is not something a
+    // person, a screen reader, or a real double-click produces -- see
+    // verify-quote-form.mjs's own comment on the check for this.
     if (this.isDisabled()) {
       return;
     }

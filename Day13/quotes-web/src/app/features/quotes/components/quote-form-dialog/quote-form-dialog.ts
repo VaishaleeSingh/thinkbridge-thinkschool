@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, effect, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, input, output, viewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import {
@@ -78,6 +78,13 @@ export class QuoteFormDialog {
 
   protected readonly modalTitle = () => (this.quote() ? 'Edit quote' : 'New quote');
 
+  // References to the shared field components purely so their native
+  // input/textarea/select can be focused programmatically -- the fields
+  // themselves still own all aria/validation rendering.
+  private readonly authorField = viewChild.required(TextField);
+  private readonly textField = viewChild.required(TextareaField);
+  private readonly backgroundField = viewChild.required(SelectField);
+
   constructor() {
     // Opening is what clears the form -- not closing. Clearing on close would
     // wipe what someone typed at the moment a failed submit is telling them to
@@ -101,15 +108,29 @@ export class QuoteFormDialog {
     effect(() => {
       const errors = this.fieldErrors();
 
-      this.applyFieldError(this.form.controls.author, errors['author']?.[0]);
-      this.applyFieldError(this.form.controls.text, errors['text']?.[0]);
-      this.applyFieldError(this.form.controls.backgroundImageUrl, errors['backgroundImageUrl']?.[0]);
+      const authorRejected = this.applyFieldError(this.form.controls.author, errors['author']?.[0]);
+      const textRejected = this.applyFieldError(this.form.controls.text, errors['text']?.[0]);
+      const backgroundRejected = this.applyFieldError(
+        this.form.controls.backgroundImageUrl,
+        errors['backgroundImageUrl']?.[0],
+      );
+
+      // A server rejection is exactly as actionable as a client-side one, and
+      // deserves the same focus move -- otherwise a keyboard/screen-reader user
+      // who submitted a form that looked valid on the client gets no signal that
+      // the request failed or which field to fix. Guarded on an actual rejection
+      // having just arrived, so this effect's first run (fieldErrors defaults to
+      // {}, before the dialog has even opened) does not steal focus.
+      if (authorRejected || textRejected || backgroundRejected) {
+        this.focusFirstInvalidControl();
+      }
     });
   }
 
   protected submit(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      this.focusFirstInvalidControl();
       return;
     }
 
@@ -126,11 +147,34 @@ export class QuoteFormDialog {
     });
   }
 
-  private applyFieldError(control: FormControl<string>, message: string | undefined): void {
+  /**
+   * Moves focus to the first invalid control's native element, in DOM order
+   * (author, then text, then background) -- not whatever order Angular happens
+   * to iterate the FormGroup's controls in. Used both for a client-invalid
+   * submit and for a server-rejected field arriving via `fieldErrors`.
+   */
+  private focusFirstInvalidControl(): void {
+    if (this.form.controls.author.invalid) {
+      this.authorField().focus();
+      return;
+    }
+
+    if (this.form.controls.text.invalid) {
+      this.textField().focus();
+      return;
+    }
+
+    if (this.form.controls.backgroundImageUrl.invalid) {
+      this.backgroundField().focus();
+    }
+  }
+
+  /** Returns whether this call is what just marked the control invalid. */
+  private applyFieldError(control: FormControl<string>, message: string | undefined): boolean {
     if (message) {
       control.setErrors({ apiError: message });
       control.markAsTouched();
-      return;
+      return true;
     }
 
     // Clearing has to go through re-validation rather than setErrors(null):
@@ -139,5 +183,7 @@ export class QuoteFormDialog {
     if (control.hasError('apiError')) {
       control.updateValueAndValidity();
     }
+
+    return false;
   }
 }

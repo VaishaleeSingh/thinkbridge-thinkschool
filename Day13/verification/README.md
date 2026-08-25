@@ -1,64 +1,69 @@
-# Verification harness
+# Verification scripts
 
-Two scripts. Neither is part of the application, and the application does not
-know either exists.
+This folder holds three things:
 
-| File | What it is |
+| File | What it does |
 |---|---|
-| `stub-api.mjs` | A stand-in for `QuotesApi` on `http://localhost:5059` |
-| `verify-ui.mjs` | Drives the running UI in headless Chromium and asserts what it does |
+| `stub-api.mjs` | A stand-in for the real Quotes API, used only for testing |
+| `verify-ui.mjs` | Opens the app in a real (headless) browser and checks the whole thing — sign in, quotes, collections, paging, etc. |
+| `verify-quote-form.mjs` | Same idea, but focused on the "New quote" form — keyboard use, screen-reader wiring, and what happens when it fails |
+| `screenshots/` | Pictures the scripts took while running, as proof |
 
-## Why a stub API exists at all
+Neither script is part of the actual app. The app never imports them and
+doesn't know they exist — they exist only to test the app from the outside,
+the same way a person clicking around would.
 
-Not to develop against — `quotes-web` points at the real API and every screen was
-built against its actual contracts. It exists for two reasons:
+## Why there's a fake API (`stub-api.mjs`)
 
-1. **Three states cannot be requested from a healthy API.** "The list failed with
-   a 500", "the list came back empty", and "the access token just expired" are
-   states the UI must handle correctly, and a working API will not produce any of
-   them on demand. The stub exposes `POST /__verify/mode` so each one can be
-   forced and the UI's response actually observed rather than assumed.
-2. **The machine that ran this verification had no .NET SDK.** That is stated
-   plainly in the submission report, along with what it means: the flows below
-   were verified against a contract-faithful double, not against the real API.
-   Running them against the real API is a step for someone with the SDK, and the
-   report says so rather than implying it was done.
+The real app talks to the real API the whole time it's being built. The stub
+only gets used for the automated test scripts, and only for two reasons:
 
-The stub mirrors the real contract deliberately and narrowly: the same routes,
-the same status codes, the same `ProblemDetails` and `ValidationProblemDetails`
-bodies, the same CORS policy, timestamps in the same
-no-timezone-designator format, and the same aggregate invariants — author ≤ 200,
-text ≤ 1000, collection name ≤ 80, at most 50 quotes per collection, no duplicate
-quote in a collection, and delete permitted only for the quote's creator.
+1. **Some situations can't be triggered on demand.** Things like "the server
+   is down", "the list came back empty", or "your login expired" are cases
+   the app has to handle well, but you can't just ask a healthy, working API
+   to fail on command. The stub can be told to fake these on purpose
+   (`POST /__verify/mode`), so the test can check the app actually handles
+   them instead of just hoping it does.
+2. **No .NET installed on the machine that first wrote these tests.** That's
+   written down plainly in the submission notes — the tests below were run
+   against a copy that behaves the same as the real API, not the real API
+   itself. Running them against the real one too is a good next step for
+   anyone who has .NET installed.
 
-Where it drifts from the real API, the UI is being verified against the wrong
-thing. Two drifts were found and fixed while writing it, both worth recording
-because both produced a *passing-looking* UI that was doing the wrong thing:
+The stub is built to behave exactly like the real API: same URLs, same error
+formats, same limits (author ≤ 200 characters, quote text ≤ 1000, and so on).
+If it ever behaves differently from the real thing, the tests are checking
+the wrong thing — so any difference found while building it got written down
+and fixed. Two were:
 
-- Error responses were sent **without CORS headers**. The real API's CORS
-  middleware runs before the endpoints and stamps every response, error responses
-  included. Without them the browser blocked a perfectly good 500 body, and the
-  client correctly reported "could not reach the API" — so the test looking for
-  the API's error message failed for a reason that had nothing to do with the app.
-- Every seeded quote had `createdByUserId: null`, which the API's ownership rule
-  treats as "no rule applies". With no third-party-owned quote in the data, the
-  "someone else's quote offers no delete control" path could not be exercised at
-  all.
+- Error responses from the stub were missing a header the browser needs
+  (CORS) to even show them — so a real failure looked like "can't reach the
+  server" instead of the actual error.
+- Every test quote had no owner recorded, which the API treats as "anyone
+  can delete this" — so there was no way to test "you can't delete someone
+  else's quote" until a properly-owned quote was added to the test data.
 
-## Running it
+## How to run it
+
+Open three terminals:
 
 ```bash
-# terminal 1
-node verification/stub-api.mjs          # listens on http://localhost:5059
+# Terminal 1 — the fake API
+node stub-api.mjs                # runs on http://localhost:5059
 
-# terminal 2
-cd quotes-web && npm start              # http://localhost:4200
+# Terminal 2 — the real app
+cd ../quotes-web
+npm start                        # runs on http://localhost:4200
 
-# terminal 3
-npm i -D playwright                     # once
-node verification/verify-ui.mjs
+# Terminal 3 — one of these, whichever you want to run
+npm install                      # only needed the first time (installs Playwright etc.)
+npx playwright install chromium  # also only needed the first time
+node verify-ui.mjs               # checks the whole app
+node verify-quote-form.mjs       # checks just the "New quote" form
 ```
 
-It exits non-zero if any check fails, prints one line per check, and writes
-screenshots to `verification/screenshots/`. The last recorded run is in
-`../docs/browser-verification-output.txt`.
+Each line printed is one check: `PASS` or `FAIL`, plus a short note on what
+was found. If anything fails, the script exits with an error so it can be
+caught automatically (e.g. in CI) instead of someone having to read every
+line by hand. Screenshots taken along the way land in `screenshots/`. The
+last full run's output is saved in `../docs/browser-verification-output.txt`.

@@ -13,8 +13,16 @@
  *
  * Usage: node verify-ui.mjs   (with stub-api.mjs and `ng serve` already running)
  */
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
+
+// The cloud sandbox this was authored in keeps its Chromium at a fixed path
+// outside Playwright's normal install location; everywhere else (including a
+// developer's own machine after `npx playwright install chromium`) it should
+// just use Playwright's own default. Checked at runtime rather than hardcoded
+// either way, so the same script runs unmodified in both places.
+const SANDBOX_CHROMIUM = '/opt/pw-browsers/chromium';
+const launchOptions = existsSync(SANDBOX_CHROMIUM) ? { executablePath: SANDBOX_CHROMIUM } : {};
 
 const APP = 'http://localhost:4200';
 const API = 'http://localhost:5059';
@@ -96,7 +104,7 @@ async function isScrollLocked(page) {
   return page.evaluate(() => document.body.classList.contains('has-modal'));
 }
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await chromium.launch(launchOptions);
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
 
