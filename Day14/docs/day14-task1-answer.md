@@ -196,3 +196,23 @@ render would be worse. The 200/1000 character limits changing: only
 both read from it, so nothing else drifts. `backgroundImageUrl` becoming
 truly required server-side with no default: no client change needed, since
 the select already always has a value selected (`DEFAULT_QUOTE_BACKGROUND_URL`).
+
+## Submission
+
+**GitHub link:** https://github.com/thinkbridge-thinkschool/VaishaleeSingh/pull/38
+
+**Notes for mentor:** Real API contract cited above is from
+`QuotesApi/Models/Quote.cs` and `QuoteEndpointExtensions.cs` directly, not
+assumed. Verification screenshot (local run, 21/21 passed) is in
+`Day13/verification/screenshots/day14-quote-form-verification-run.png`.
+
+**What did you learn this session?** A signal `input()` only refreshes when
+Angular's change detection actually runs the binding — not the instant the
+source signal changes — which is why a "disabled while loading" guard can
+have a real, narrow gap for same-tick double-dispatch, but not for anything a
+real person or screen reader does.
+
+**What would break this?** Two click/Enter events fired programmatically with
+zero gap between them (no task boundary) can both slip past the loading
+guard and fire two POST requests — not reachable by a real double-click, but
+reachable by another script driving the button directly.
