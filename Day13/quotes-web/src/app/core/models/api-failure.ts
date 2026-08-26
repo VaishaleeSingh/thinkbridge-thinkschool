@@ -44,6 +44,14 @@ interface ProblemDetailsBody {
  * by default, and it tells a user nothing they can act on.
  */
 export function toApiFailure(error: unknown): ApiFailure {
+  // Interceptors normalise HTTP errors before stores see them. Stores still
+  // call this helper at their boundary, so accepting the typed result unchanged
+  // keeps that existing code useful without replacing a specific message with
+  // the generic non-HTTP fallback.
+  if (isApiFailure(error)) {
+    return error;
+  }
+
   if (!(error instanceof HttpErrorResponse)) {
     return {
       status: 0,
@@ -78,6 +86,21 @@ export function toApiFailure(error: unknown): ApiFailure {
     defaultMessageForStatus(error.status);
 
   return { status: error.status, message, fieldErrors };
+}
+
+function isApiFailure(error: unknown): error is ApiFailure {
+  if (error === null || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as Partial<ApiFailure>;
+
+  return (
+    typeof candidate.status === 'number' &&
+    typeof candidate.message === 'string' &&
+    candidate.fieldErrors !== null &&
+    typeof candidate.fieldErrors === 'object'
+  );
 }
 
 /**

@@ -65,4 +65,14 @@ describe('toApiFailure', () => {
     expect(failure.status).toBe(0);
     expect(failure.message).toBe('Something went wrong. Please try again.');
   });
+
+  it('keeps an already-mapped failure unchanged when a store normalises it again', () => {
+    const mapped = {
+      status: 400,
+      message: 'Page must be at least 1.',
+      fieldErrors: { page: ['Page must be at least 1.'] },
+    };
+
+    expect(toApiFailure(mapped)).toBe(mapped);
+  });
 });

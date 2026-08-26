@@ -6,8 +6,17 @@ import {
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter, withInMemoryScrolling } from '@angular/router';
 
+import { apiErrorInterceptor } from './core/interceptors/api-error-interceptor';
 import { authInterceptor } from './core/interceptors/auth-interceptor';
+import { retryInterceptor } from './core/interceptors/retry-interceptor';
 import { routes } from './app.routes';
+
+/**
+ * Request interceptors run left-to-right; responses unwind right-to-left.
+ * Consequently retry sees raw transient responses first, auth then sees a raw
+ * final 401, and API-error mapping runs once after both recovery paths finish.
+ */
+export const HTTP_INTERCEPTOR_CHAIN = [apiErrorInterceptor, authInterceptor, retryInterceptor];
 
 /**
  * Every provider this application has, in one place, as functions. There is no
@@ -56,8 +65,6 @@ export const appConfig: ApplicationConfig = {
       withInMemoryScrolling({ scrollPositionRestoration: 'top', anchorScrolling: 'enabled' }),
     ),
 
-    // One interceptor: bearer token, and a single silent retry after refreshing
-    // an expired access token. See core/interceptors/auth-interceptor.ts.
-    provideHttpClient(withInterceptors([authInterceptor])),
+    provideHttpClient(withInterceptors(HTTP_INTERCEPTOR_CHAIN)),
   ],
 };
