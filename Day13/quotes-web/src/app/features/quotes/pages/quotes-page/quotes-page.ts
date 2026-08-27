@@ -11,6 +11,7 @@ import { QuoteFormDialog } from '../../components/quote-form-dialog/quote-form-d
 import { QuotePreviewDialog } from '../../components/quote-preview-dialog/quote-preview-dialog';
 import { QuotesFilterBar } from '../../components/quotes-filter-bar/quotes-filter-bar';
 import { QuotesGrid } from '../../components/quotes-grid/quotes-grid';
+import { CollectionPicker } from '../../services/collection-picker';
 import { QUOTE_PAGE_SIZES, QuotesStore } from '../../services/quotes-store';
 
 /**
@@ -32,7 +33,7 @@ import { QUOTE_PAGE_SIZES, QuotesStore } from '../../services/quotes-store';
   templateUrl: './quotes-page.html',
   styleUrl: './quotes-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [QuotesStore],
+  providers: [QuotesStore, CollectionPicker],
   imports: [
     Button,
     Loader,

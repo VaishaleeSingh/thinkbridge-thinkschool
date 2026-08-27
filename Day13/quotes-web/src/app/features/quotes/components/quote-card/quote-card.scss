@@ -118,3 +118,138 @@ app-card {
   width: 1rem;
   height: 1rem;
 }
+
+.quote__collect {
+  position: relative;
+}
+
+.quote__collect-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  color: rgb(236 245 255 / 94%);
+  background: rgb(255 255 255 / 12%);
+  border: 1px solid rgb(255 255 255 / 20%);
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  &:hover,
+  &:focus-visible {
+    color: #fff;
+    background: rgb(255 255 255 / 22%);
+  }
+
+  &--open {
+    background: rgb(140 230 255 / 30%);
+    border-color: rgb(140 230 255 / 60%);
+  }
+}
+
+// A [popover], not a plain div -- see quote-card.ts's constructor comment: it
+// paints in the browser's top layer once shown, which is what actually
+// escapes app-card's own `overflow: hidden` (rounded corners, clipped
+// background image).
+//
+// Unlike the rest of this file, this panel is deliberately themed rather than
+// hardcoded to the photo-background white/navy the card's own text uses --
+// once open it floats above EVERYTHING in the top layer, disconnected from
+// the quote's background image, so it needs to read as an ordinary themed
+// surface (the same one the modal and every card use, via @include surface)
+// rather than guessing at a colour that only happened to work on one theme.
+// It was hardcoded to a fixed navy/white pair before; that looked fine in the
+// dark theme purely by coincidence and was illegible in light -- @include
+// surface + the text/status tokens make it correct in both automatically,
+// the same way everything else in this stylesheet already is.
+.quote__collect-menu {
+  @include surface;
+
+  // [popover]'s UA stylesheet defaults to `position: fixed; inset: 0;
+  // margin: auto` (viewport-centered). `position: fixed` is kept -- a
+  // top-layer element's containing block is the viewport regardless, so
+  // fighting that with `position: absolute` doesn't reconnect it to
+  // `.quote__collect`. `inset: auto` clears the UA centering; `left` and
+  // `bottom` are then set inline, per open, from quote-card.ts using the
+  // toggle button's real viewport position (see the effect's comment for
+  // why that has to happen in JS rather than in this stylesheet).
+  position: fixed;
+  inset: auto;
+  z-index: 5;
+  margin: 0;
+  min-width: 14rem;
+  max-width: 16rem;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text);
+
+  // Closed state is UA-default `display: none`; nothing to override there.
+  // Popovers have no ::backdrop (that's <dialog>-only) -- "auto" gives
+  // native light-dismiss on outside click/Esc without one.
+}
+
+.quote__collect-status {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+
+  &--error {
+    color: var(--color-danger);
+  }
+}
+
+.quote__collect-retry {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  color: var(--color-primary);
+}
+
+.quote__collect-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.quote__collect-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border-radius: calc(var(--radius-md) - var(--space-2));
+  text-align: left;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    background: var(--color-primary-soft);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+.quote__collect-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote__collect-item-count {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
