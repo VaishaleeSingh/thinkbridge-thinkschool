@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
+import { RouterLink } from '@angular/router';
 
 import { Quote } from '../../../../core/models/quote';
 import { API_BASE_URL } from '../../../../core/services/api-base-url';
@@ -20,7 +21,7 @@ import { Card } from '../../../../shared/components/card/card';
   templateUrl: './quote-card.html',
   styleUrl: './quote-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Card, Button, Badge],
+  imports: [Card, Button, Badge, RouterLink],
 })
 export class QuoteCard {
   private readonly apiBaseUrl = inject(API_BASE_URL);

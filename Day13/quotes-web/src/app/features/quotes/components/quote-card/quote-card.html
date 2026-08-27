@@ -6,6 +6,7 @@
       backgroundImage() +
       ')'
     "
+    [style.view-transition-name]="'quote-image-' + quote().id"
   >
     <button
       type="button"
@@ -30,6 +31,35 @@
     </button>
 
     <footer class="quote__footer">
+      <!--
+        The one place in this card that is a REAL router navigation rather than
+        the modal preview above. quote-detail-page is its own route (lazy-loaded,
+        :id param) and the View Transition between the two relies on this being
+        an actual navigation, not another click on the modal-opening button.
+      -->
+      <a
+        class="quote__open-full"
+        [routerLink]="['/quotes', quote().id]"
+        [attr.aria-label]="'Open the full page for the quote by ' + quote().author"
+      >
+        <!-- Expand/maximize glyph, same inline-SVG pattern as the theme toggle. -->
+        <svg
+          class="quote__open-full-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path
+            d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </a>
+
       @if (deletable()) {
         <app-button
           variant="danger"

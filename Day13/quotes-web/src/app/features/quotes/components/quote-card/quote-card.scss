@@ -91,3 +91,30 @@ app-card {
   font-size: var(--text-sm);
   color: rgb(236 245 255 / 94%);
 }
+
+// Icon-only, deliberately: the visible label is the SVG glyph, and the
+// meaningful label ("Open the full page for the quote by X") lives on
+// aria-label on the <a> itself -- so a screen reader still announces exactly
+// what a sighted user of the text-link version would have read.
+.quote__open-full {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  color: rgb(236 245 255 / 94%);
+  background: rgb(255 255 255 / 12%);
+  border: 1px solid rgb(255 255 255 / 20%);
+
+  &:hover,
+  &:focus-visible {
+    color: #fff;
+    background: rgb(255 255 255 / 22%);
+  }
+}
+
+.quote__open-full-icon {
+  width: 1rem;
+  height: 1rem;
+}

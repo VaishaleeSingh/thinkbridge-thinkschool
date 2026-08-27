@@ -72,4 +72,14 @@
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
+
+  // The View Transition API's pseudo-elements (Day 16, quotes-list <->
+  // quote-detail) live in their own tree, not matched by `*`/`*::before`/
+  // `*::after` above -- they need naming explicitly or a reduced-motion user
+  // still gets the full cross-fade/morph animation.
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 1ms !important;
+  }
 }

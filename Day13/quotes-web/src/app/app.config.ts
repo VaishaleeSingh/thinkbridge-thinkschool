@@ -4,7 +4,7 @@ import {
   provideZonelessChangeDetection,
 } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import { provideRouter, withInMemoryScrolling } from '@angular/router';
+import { provideRouter, withInMemoryScrolling, withViewTransitions } from '@angular/router';
 
 import { apiErrorInterceptor } from './core/interceptors/api-error-interceptor';
 import { authInterceptor } from './core/interceptors/auth-interceptor';
@@ -63,6 +63,13 @@ export const appConfig: ApplicationConfig = {
       // Without this, navigating from the bottom of a long quotes list to a
       // collection lands halfway down the new page.
       withInMemoryScrolling({ scrollPositionRestoration: 'top', anchorScrolling: 'enabled' }),
+
+      // Day 16: the browser's View Transition API, used for the quotes-list ->
+      // quote-detail navigation. skipInitialTransition avoids animating the very
+      // first paint of the app, which nothing has navigated FROM. A browser
+      // without the API (or a user with prefers-reduced-motion) just navigates
+      // instantly -- this is progressive enhancement, not a requirement.
+      withViewTransitions({ skipInitialTransition: true }),
     ),
 
     provideHttpClient(withInterceptors(HTTP_INTERCEPTOR_CHAIN)),
