@@ -60,6 +60,96 @@
         </svg>
       </a>
 
+      <!--
+        Day 16 (state management, signals first): add this quote to one of the
+        caller's collections. Backed by CollectionPicker -- a plain injectable
+        with signals, not a CollectionDetailStore-shaped class -- see its own
+        header comment for why. One shared instance for the whole page (see
+        QuotesPage's providers) is what makes only-one-menu-open-at-once true
+        without this component tracking its siblings.
+      -->
+      <div class="quote__collect">
+        <button
+          #collectToggle
+          type="button"
+          class="quote__collect-toggle"
+          [class.quote__collect-toggle--open]="picker.isOpenFor(quote().id)"
+          [attr.aria-expanded]="picker.isOpenFor(quote().id)"
+          [attr.aria-label]="'Add the quote by ' + quote().author + ' to a collection'"
+          (click)="togglePicker()"
+        >
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path
+              d="M12 5v14M5 12h14"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+
+        <!--
+          Always present (a closed [popover] is display:none by default, per
+          spec), not @if-gated -- #collectMenu needs a stable element for the
+          constructor's effect to call .showPopover()/.hidePopover() on. See
+          quote-card.ts for why this is a [popover] div, not a plain div, and
+          not a <dialog> either (non-modal <dialog>.show() does NOT escape an
+          ancestor's overflow: hidden -- only top-layer promotion does, and
+          only .showModal() gets that; the Popover API gets the same top-layer
+          promotion without dragging in modal/backdrop/focus-trap behaviour).
+        -->
+        <div
+          #collectMenu
+          popover="auto"
+          class="quote__collect-menu"
+          [attr.aria-label]="'Collections for the quote by ' + quote().author"
+        >
+            @if (picker.isLoadingCollections()) {
+              <p class="quote__collect-status">Loading your collections…</p>
+            } @else if (picker.collectionsError(); as failure) {
+              <p class="quote__collect-status quote__collect-status--error">{{ failure.message }}</p>
+              <button type="button" class="quote__collect-retry" (click)="retryLoadCollections()">
+                Retry
+              </button>
+            } @else if (picker.collections(); as collections) {
+              @if (collections.length === 0) {
+                <p class="quote__collect-status">
+                  You don't have any collections yet. Create one from the Collections page.
+                </p>
+              } @else {
+                <ul class="quote__collect-list">
+                  @for (collection of collections; track collection.id) {
+                    <li>
+                      <button
+                        type="button"
+                        class="quote__collect-item"
+                        [disabled]="picker.isAdding(quote().id, collection.id) || collection.quoteCount >= 50"
+                        (click)="addToCollection(collection.id)"
+                      >
+                        <span class="quote__collect-item-name">{{ collection.name }}</span>
+                        <span class="quote__collect-item-count">
+                          @if (picker.isAdding(quote().id, collection.id)) {
+                            Adding…
+                          } @else if (collection.quoteCount >= 50) {
+                            Full
+                          } @else {
+                            {{ collection.quoteCount }}/50
+                          }
+                        </span>
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+            }
+
+            @if (picker.addError(); as addFailure) {
+              <p class="quote__collect-status quote__collect-status--error">{{ addFailure.message }}</p>
+            }
+        </div>
+      </div>
+
       @if (deletable()) {
         <app-button
           variant="danger"
