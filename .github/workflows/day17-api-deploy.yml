@@ -18,7 +18,12 @@ on:
   push:
     branches: [main, day17-deploy-azure-static-web-apps]
     paths:
-      - 'Day7/piece2/QuotesApi/**'
+      # The whole of Day7/piece2, not just QuotesApi/. The test projects are
+      # this workflow's gate, so a change to them changes what the gate means
+      # -- and with the narrower filter they did not trigger it. The commit
+      # that fixed CrossCuttingTests silently did not re-run the deploy that
+      # the test failure had blocked, which is the gate quietly not gating.
+      - 'Day7/piece2/**'
       - '.github/workflows/day17-api-deploy.yml'
   workflow_dispatch:
 
