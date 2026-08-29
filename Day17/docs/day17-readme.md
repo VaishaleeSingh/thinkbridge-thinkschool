@@ -14,6 +14,7 @@ rather than hand-rolling it.
 | `day17-staticwebapp-config-notes.md` | Why every line of `staticwebapp.config.json` is there. |
 | `../verification/day17-verification-log.md` | What was actually run and what it returned — **including a table of everything that is NOT verified and why.** |
 | `../api-bff/` | The BFF that holds the managed identity. Never compiled; see the log. |
+| `../.env.example` | Every configuration value in one place, and — for the two real secrets — the mechanism that owns each instead. |
 
 ## The one-paragraph version
 

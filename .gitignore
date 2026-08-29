@@ -20,3 +20,17 @@ node_modules/
 
 # Day 17: local build snapshot used for Lighthouse runs
 Day17/verification/dist-snapshot.tgz
+
+# Environment files. Real values never get committed -- only the .env.example
+# template does. See Day17/.env.example for what belongs where, and note that
+# the two actual secrets in this project deliberately do NOT live in a .env:
+# the SWA deployment token lives in GitHub Actions secrets, and Jwt:Secret
+# lives in dotnet user-secrets (see the README).
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Azure Functions local config -- holds whatever you put in it, so it is
+# ignored and only the .example is tracked.
+local.settings.json
