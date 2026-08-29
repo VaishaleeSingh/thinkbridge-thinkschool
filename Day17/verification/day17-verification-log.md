@@ -9,8 +9,10 @@ side can reach Azure. The bridge VM's egress allows the npm registry and nothing
 else (`login.microsoftonline.com`, `pypi.org`, `aka.ms` and the live Container
 App all fail to connect); the cloud sandbox reaches pypi and npm but its proxy
 returns `403` for `login.microsoftonline.com`. There is no `az`, `func` or
-`dotnet` on either. **No Azure resource was created, and no live URL exists yet.**
-Every step below is either genuinely verified locally or marked NOT VERIFIED.
+`dotnet` on either. That was true when this log was first written. It no longer is: the Azure work
+was later done through the portal in a browser on the user's own machine, and
+§6b records what the live site actually returns. Sections 1-6 remain local
+verification; §6b is live; §7 is still the table of what nobody has proven.
 
 ---
 
@@ -206,6 +208,115 @@ been measured**. The image work above is verified as a payload reduction, not ye
 as a score on the page that carries it. Running Lighthouse against `/quotes`
 needs a signed-in session against the live API and a Puppeteer login script in
 Lighthouse CI; that is step 10 of the plan and is not done.
+
+## 6b. The deployment, verified against the live site
+
+VERIFIED. This section replaces the "no live URL exists yet" framing above: the
+Static Web App was created, the front end deployed, and the Week-1 API linked as
+its backend.
+
+```
+Static Web App : quotes-web-day17   (SKU Standard, rg-quotes-api)
+Live URL       : https://yellow-river-074adb50f.7.azurestaticapps.net
+Backend        : Container App -> quotes-api-cowork   (Production environment)
+```
+
+Standard, not Free, because only Standard supports a linked backend. Deployment
+source was set to **Other** rather than GitHub, deliberately: the GitHub option
+makes Azure write its own workflow file into the repository alongside
+`day17-swa-deploy.yml`, giving two competing deploy paths.
+
+### A. The live URL loads and routes
+
+`GET /` returns the app and `authGuard` redirects to
+`/sign-in?returnUrl=%2Fquotes` — so the router, the guard and the SPA fallback
+all work as deployed, not just locally.
+
+### B. The API answers through the SWA, same-origin
+
+The decisive test is not a status code but a **body**. An anonymous request with
+empty credentials hits the `ValidationProblem` branch of
+`AuthEndpointExtensions.MapAuthEndpoints`:
+
+```
+POST /api/auth/login   {"email":"","password":""}
+-> 400 application/problem+json
+   {"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1",
+    "title":"One or more validation errors occurred.",
+    "status":400,
+    "errors":{"credentials":["Email and password are required."]},
+    "traceId":"00-1a1d8b3c...-00"}
+```
+
+That is the API's own message, from its own source, with a real trace id,
+arriving through the SWA's `/api` route. Nothing else could produce it.
+
+A note on a result that looks wrong and is not: `POST /api/auth/login` with
+*invalid* credentials returns **401 with an empty body and no content-type**,
+which initially read like a platform-level rejection intercepting the request
+before it reached the app. It is not — the handler returns
+`Results.Unauthorized()`, and that is exactly what ASP.NET Core Minimal APIs
+emit for it. Confirmed by reading the source rather than guessing from the
+response.
+
+### C. CORS: nothing to fix, by construction
+
+There is no CORS configuration in this deployment and no CORS error to solve.
+`environment.production.ts` sets `apiBaseUrl: ''`, so the browser requests
+`/api/quotes` on its own origin, and the SWA proxies that to the Container App
+server-side. No preflight, no `Access-Control-Allow-Origin`, and no change to
+the API's `Cors:AllowedOrigins`. This is the payoff of the same-origin decision
+Day 13 made and documented; the alternative — pointing the front end
+cross-origin at the Container App — would have needed an origin added to the API,
+a rebuild, and a widened `connect-src` in the CSP.
+
+### D. The config behaves as intended, after a real bug was fixed
+
+```
+GET /api/quotes             -> 401           (the API's auth, not an HTML 200)
+GET /api/diagnostics/stats  -> 404           (blocked at the edge)
+GET /nonexistent-asset.webp -> 404 text/html (a real 404 again)
+GET /quotes-hero-bg.webp    -> 200 image/webp
+```
+
+Every one of those first three returned **200 text/html** before the
+`responseOverrides.404` removal — see
+`Day17/docs/day17-staticwebapp-config-notes.md`. Finding that required testing
+the deployed site; reading the config would not have shown it, because each rule
+was individually correct and only their interaction was wrong.
+
+### E. Direct access to the API is intact
+
+Linking prompted the warning that "authentication will be configured to restrict
+your backend to requests from the static web app", which risked breaking the
+Container App's public URL that Day 5's submission cites. It did not:
+
+```
+GET https://quotes-api-cowork...azurecontainerapps.io/health
+-> {"service":"QuotesApi","status":"Healthy","totalDurationMs":0.53,
+    "checks":[{"name":"database","status":"Healthy","durationMs":0.42,"error":false}]}
+```
+
+Checked immediately after linking, precisely because it was the predicted
+failure. Earlier days' submissions are unaffected.
+
+### F. What this section does NOT prove
+
+- **A signed-in session was not tested end to end.** That needs real credentials,
+  and creating an account or entering a password was out of scope for the agent
+  doing this work. `/api/quotes` returning 401 rather than HTML is strong
+  evidence the authorised path will work, but it is evidence, not the test.
+- **Lighthouse has not been re-run against the live URL.** The numbers in §6 are
+  from the production build served through a local emulation of the SWA edge; the
+  sandbox this was run from cannot reach `*.azurestaticapps.net`. The live run is
+  the one that counts and is still owed.
+- **The managed identity is still not in the path.** This is the headline
+  requirement and it is *not* met by a linked Container App: the SWA-to-backend
+  link authenticates the platform hop, it does not mint a managed-identity token
+  for the API. What exists now is a working same-origin deployment; what Day 17
+  asks for additionally is the BFF in `Day17/api-bff/` holding a system-assigned
+  identity. An environment can have only one backend, so switching to it means
+  unlinking the Container App first.
 
 ## 7. NOT VERIFIED — everything requiring Azure
 

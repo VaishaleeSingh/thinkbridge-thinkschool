@@ -42,20 +42,33 @@ from 2.0 MB of unoptimised JPEG to **428 kB of WebP**; the hero went 417 kB →
 96.8 kB. Lighthouse (mobile, three runs): **96 performance, 100 accessibility,
 100 best-practices, 100 SEO.**
 
-**Deployment: started, not finished.** The Static Web App exists —
-`quotes-web-day17`, **SKU Standard** (the only tier that supports a linked
-backend, which is what holds the managed identity), resource group
-`rg-quotes-api`, default hostname `yellow-river-074adb50f.7.azurestaticapps.net`.
-Source was set to **Other**, not GitHub, so Azure did not write a competing
-workflow file into this repo alongside `day17-swa-deploy.yml`. The deployment
-token is in GitHub secrets and the workflow reaches the deploy step; the first
-attempts failed on the token value, which is where this stands.
+**Deployment: live, with the managed identity still outstanding.**
 
-Still outstanding: the custom domain, the Function App and its managed identity,
-the app role on the Entra app registration, and the API-side auth change. The BFF
-in `../api-bff/` has never been through a compiler — no .NET SDK was available
-where it was written. `../verification/day17-verification-log.md` §7 is the table
-of every unverified claim.
+```
+Live URL : https://yellow-river-074adb50f.7.azurestaticapps.net
+SWA      : quotes-web-day17  (SKU Standard, rg-quotes-api)
+Backend  : Container App -> quotes-api-cowork
+```
+
+The front end is deployed and the Week-1 API is linked as the SWA's `/api`
+backend, so the browser talks to the API **same-origin** and there is no CORS
+configuration in this deployment at all. Proven by the API's own
+`application/problem+json` body arriving through `/api/auth/login` — see
+`../verification/day17-verification-log.md` §6b.
+
+Still outstanding, and stated plainly because a working deployment is not the
+same as a finished exercise:
+
+- **The managed identity is not in the path.** A linked Container App
+  authenticates the platform hop; it does not mint an MI token for the API. That
+  needs the BFF in `../api-bff/`, which has never been compiled — no .NET SDK was
+  available where it was written. An SWA environment allows one backend, so
+  adopting it means unlinking the Container App first.
+- **The custom domain** is not set up; the default hostname is what is live.
+- **Lighthouse has not been re-run against the live URL** — the ≥ 95 numbers are
+  from the production build through a local emulation of the SWA edge.
+- **A signed-in session was not tested end to end** (that needed real
+  credentials).
 
 Three findings from doing the work rather than planning it, all in the log:
 
