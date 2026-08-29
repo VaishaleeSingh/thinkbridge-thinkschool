@@ -410,6 +410,48 @@ The useful consequence: because `api://91566dbd-...` still contains `api://`,
 adding Entra sign-in to the front end needs **no C# change at all** — which
 matters given that C# cannot be compiled from here.
 
+## 6e. Container App configuration, read and corrected
+
+VERIFIED in the portal. `quotes-api-cowork` lives in **`thinkschool-azd-rg`**,
+not `rg-quotes-api` — the Static Web App is in the latter. Two resource groups,
+and conflating them wastes time; both are now named separately in
+`Day17/.env.example`.
+
+Environment variables on revision `quotes-api-cowork--0000004`, before the change:
+
+| name | source | value |
+|---|---|---|
+| `Jwt__Secret` | Reference a secret | `jwt-secret` |
+| `ASPNETCORE_ENVIRONMENT` | Manual entry | `Production` |
+
+Two things this settles:
+
+- **`Jwt__Secret` was already wired correctly**, as a *secret reference* rather
+  than a literal env var — so the signing key is held in the Container App's
+  secret store and never appears in configuration anyone with Reader can read.
+  Nothing needed adding. Rotating it means updating the `jwt-secret` secret under
+  Security → Secrets, which also invalidates every issued access and refresh
+  token.
+- **`ASPNETCORE_ENVIRONMENT=Production` confirms `appsettings.Development.json`
+  is not loaded here**, which is what made removing the committed signing key
+  from that file (§8) safe for the deployed API rather than merely probably safe.
+
+`AzureAd__Audience` was **absent**, so the API fell back to the wrong value baked
+into `appsettings.json` — the concrete proof of §6d. Added as a manual entry:
+
+```
+AzureAd__Audience = api://91566dbd-d857-488a-858d-475e60b309b7
+```
+
+Saved as a new revision; `/health` came back `{"service":"QuotesApi",
+"status":"Healthy", checks: database Healthy}` afterwards, so the app restarted
+cleanly with the new setting.
+
+One consequence worth stating: this fixes the *audience* the API validates
+against, and nothing else. It does not fix §6c — the running image still predates
+`/api/auth/register`, so account creation on the deployed site still 404s until
+the Container App is rebuilt from `Day7/piece2`.
+
 ## 7. NOT VERIFIED — everything requiring Azure
 
 Stated as gaps rather than glossed. An unverified claim is worse than a missing
