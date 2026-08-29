@@ -106,3 +106,83 @@ contains `api://` to the EntraId scheme, and the audience now matches the app
 registration — so adding MSAL to the Angular client needs **no C# change at
 all**. The registration already has the SPA platform and both redirect URIs, and
 no client secret.
+
+---
+
+# POSTSCRIPT: the deploy went to the wrong Container App
+
+## What happened
+
+`dotnet build Day7/piece2/QuotesApi.slnx` **succeeded** — 14 warnings, all
+pre-existing `NU1903` vulnerability notices on transitive packages, no errors.
+The prediction above that it would fail was wrong: the Day 7 C# changes compile
+fine.
+
+`azd deploy quotes-api` then succeeded in 41 seconds and reported:
+
+```
+Endpoint: https://quotes-api-azd.whitestone-71ebd55e.centralindia.azurecontainerapps.io/
+resource group: thinkschool-rg
+```
+
+That is **not** the app the Static Web App is linked to. There are (at least)
+two Container Apps running this API:
+
+| app | resource group | deployed by | code |
+|---|---|---|---|
+| `quotes-api-cowork` | `thinkschool-azd-rg` | by hand, Day 5 | **stale** (no `/register`) |
+| `quotes-api-azd` | `thinkschool-rg` | azd, and now again | **current** (has `/register`) |
+
+The SWA `/api` backend is linked to `quotes-api-cowork`. So the new code is live,
+and the deployed front end still cannot reach it.
+
+## Why the mitigation above did not prevent it
+
+Copying Day 5's azd environment into `Day7/piece2` did stop azd from creating a
+*new* environment — but that environment was never the one behind
+`quotes-api-cowork`. Day 5 deployed the API **twice**, by two different routes
+(`Day5/piece2/docs/azure-container-apps.md` by hand with `az cli`, and
+`docs/azd-deployment.md` with azd), and they produced different apps.
+
+The tell was visible and was waved through: the copied env said
+
+```
+AZURE_RESOURCE_GROUP="thinkschool-rg"
+```
+
+while the portal showed `quotes-api-cowork` in `thinkschool-azd-rg`. That
+mismatch was noticed and rationalised as "possibly stale, or azd appends -rg"
+instead of being checked. It was neither — it was two different resource groups
+holding two different apps.
+
+## The fix, and which app should win
+
+**Re-link the Static Web App's `/api` backend to `quotes-api-azd`**, rather than
+chasing the new image onto `quotes-api-cowork`. Reasons:
+
+- `quotes-api-azd` is the azd-managed app. Every future `azd deploy` updates it,
+  so it stays current by default. `quotes-api-cowork` is hand-deployed and would
+  drift out of date again the moment anyone forgets.
+- It is non-destructive: `quotes-api-cowork` keeps running, so the URL cited in
+  `Day5/piece2/docs/day5-aca-submission.md` continues to answer.
+
+Steps:
+
+1. SWA `quotes-web-day17` → Settings → APIs → Production → unlink, then link
+   Container App **`quotes-api-azd`**.
+2. On `quotes-api-azd`, confirm/add the settings that were added to the *other*
+   app and do not exist here:
+   - `AzureAd__Audience = api://91566dbd-d857-488a-858d-475e60b309b7`
+   - `Jwt__Secret` — must resolve to a real key or the app will not start
+     (Day 4 startup validation). azd provisioned this app, so it likely already
+     has one; confirm rather than assume.
+3. Verify through the SWA, which is the only test that matters:
+
+```
+POST https://yellow-river-074adb50f.7.azurestaticapps.net/api/auth/register
+     {"email":"","password":""}   -> 400 application/problem+json   (route exists)
+                                  -> NOT 404
+```
+
+A 400 with the API's own validation body proves the route exists and the link
+reaches the current image. 404 means the SWA is still pointed at the stale app.
