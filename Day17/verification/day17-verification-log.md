@@ -318,6 +318,98 @@ failure. Earlier days' submissions are unaffected.
   identity. An environment can have only one backend, so switching to it means
   unlinking the Container App first.
 
+## 6c. The deployed API is a Day 5 image, and the front end has outgrown it
+
+FOUND BY TESTING THE LIVE SITE. Creating an account on the deployed app fails:
+
+```
+POST https://yellow-river-074adb50f.7.azurestaticapps.net/api/auth/register
+-> 404 Not Found, Content-Length: 0
+```
+
+and the UI surfaces it as "That item no longer exists."
+
+**This is not a proxy, CORS or routing fault**, and it is worth being precise
+about why, because the obvious reading is that the SWA `/api` link is broken:
+
+- `POST /api/auth/login` reaches the API and returns the API's own
+  `application/problem+json` (see §6b). Same route group.
+- `GET /api/quotes` returns the API's own 401.
+- Only `/api/auth/register` 404s.
+
+One endpoint missing from a route group that otherwise works is not a transport
+problem. The cause is in the repository:
+
+```
+grep -c 'MapPost("/register"'  Day5/piece2/QuotesApi/.../AuthEndpointExtensions.cs  -> 0
+grep -c 'MapPost("/register"'  Day7/piece2/QuotesApi/.../AuthEndpointExtensions.cs  -> 1
+```
+
+`quotes-api-cowork` was deployed on **Day 5**, from `Day5/piece2`. `/api/auth/register`
+was added later, in `Day7/piece2`, specifically so the Angular client could create
+accounts — and `Day13/docs/day13-angular-signals-zoneless-submission.md` already
+recorded the catch at the time: those C# changes "have not been compiled, because
+no .NET SDK was available where the front end was built."
+
+So the running image predates the endpoint the deployed front end depends on.
+The same is true of the CORS policy added in that commit, which happens not to
+matter now only because the SWA link makes everything same-origin.
+
+**The fix is to rebuild and redeploy the Container App from `Day7/piece2`**, which
+needs a .NET SDK and a container push. It could not be done from the environment
+this log was written in: `dotnet` is absent from the bridge VM, and every
+Microsoft host — `dot.net`, `builds.dotnet.microsoft.com`, `api.nuget.org`,
+`packages.microsoft.com` — is refused by the egress proxy. Tested, not assumed.
+
+Two things follow that are easy to get wrong:
+
+- **Switching the SWA backend to the BFF will not fix this.** The BFF is a proxy
+  to the same Container App, so `/api/auth/register` still resolves to an image
+  that has no such route. The stale image is the root cause either way.
+- **A redeploy from `Day7/piece2` also needs `AzureAd__Audience` corrected**
+  (§6d) and `Jwt__Secret` supplied, or the API will not start — Day 4's startup
+  validation fails fast by design.
+
+## 6d. `AzureAd:Audience` is a scope, not an audience
+
+FOUND while wiring Entra sign-in. The app registration and the API disagree:
+
+```
+app registration "QuotesApi" (91566dbd-...)
+  Application ID URI : api://91566dbd-d857-488a-858d-475e60b309b7
+  exposed scope      : api://91566dbd-d857-488a-858d-475e60b309b7/access
+                       (scope name `access`, consentable by Admins and users)
+  client secret      : none
+  SPA redirect URIs  : https://yellow-river-074adb50f.7.azurestaticapps.net
+                       http://localhost:4200
+
+Day7/piece2/QuotesApi/appsettings.json
+  AzureAd:Audience   : api://quotes-api/access
+```
+
+`aud` in an issued token is the **Application ID URI**. The portal states it on
+the field itself: "It is the prefix for scopes and in access tokens, it is the
+value of the audience claim." `api://quotes-api/access` is the *scope* — audience
+plus scope name — so the API has been configured to require an audience Entra
+cannot mint. **The EntraId scheme has never validated a real token.** It went
+unnoticed because nothing had ever presented one; `AuthSchemeSelector` routes on
+`aud` containing `api://` and everything so far has used the first-party JWT.
+
+Renaming the App ID URI to `api://quotes-api` to match the config was attempted
+and **rejected by Azure**:
+
+> All newly added URIs must contain a tenant verified domain, tenant ID, or app
+> ID, as per the default tenant policy of your organization.
+
+So the configuration is the side that must change:
+`AzureAd__Audience = api://91566dbd-d857-488a-858d-475e60b309b7`, set as an
+environment variable on the Container App — no code change, no rebuild.
+
+The useful consequence: because `api://91566dbd-...` still contains `api://`,
+`AuthSchemeSelector` routes such tokens to the EntraId scheme unchanged, so
+adding Entra sign-in to the front end needs **no C# change at all** — which
+matters given that C# cannot be compiled from here.
+
 ## 7. NOT VERIFIED — everything requiring Azure
 
 Stated as gaps rather than glossed. An unverified claim is worse than a missing

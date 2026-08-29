@@ -34,3 +34,7 @@ Day17/verification/dist-snapshot.tgz
 # Azure Functions local config -- holds whatever you put in it, so it is
 # ignored and only the .example is tracked.
 local.settings.json
+
+# Day 17 BFF build output
+Day17/api-bff/publish/
+Day17/api-bff/deploy.zip
