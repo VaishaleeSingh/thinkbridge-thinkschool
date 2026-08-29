@@ -1,0 +1,160 @@
+name: day17-api-deploy
+
+# Builds the Week-1 QuotesApi image and rolls it out to the Container App.
+#
+# WHY THIS EXISTS. Every previous deploy of this API was a local `azd deploy`
+# followed by a corrective `az containerapp update`, and the gap between those
+# two steps is where Day 17 lost an afternoon: the image in the registry and the
+# image the Container App referenced drifted apart, one Container App ran a
+# fortnight-old build while another ran the current one, and nothing in the repo
+# recorded which was which. A workflow cannot drift from itself.
+#
+# It is separate from day17-swa-deploy.yml (front end) and from ci.yml (the .NET
+# gate) for the same reason those two are separate from each other: a failure
+# here should not be reported as a front-end failure, and a front-end change
+# should not rebuild and redeploy the API.
+
+on:
+  push:
+    branches: [main, day17-deploy-azure-static-web-apps]
+    paths:
+      - 'Day7/piece2/QuotesApi/**'
+      - '.github/workflows/day17-api-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  # A second push while a rollout is in flight should replace it, not race it --
+  # two `containerapp update` calls interleaving can leave the app pointing at
+  # the older of the two images.
+  group: api-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: crqn4pdkxclsa6s.azurecr.io
+  IMAGE: quotes-api
+  RESOURCE_GROUP: thinkschool-rg
+  CONTAINER_APP: quotes-api-azd
+
+# OIDC federated credentials, not a stored service-principal secret. The whole
+# point of Day 17 is that a deployment does not need a password sitting
+# somewhere, and that applies to the pipeline as much as to the app: id-token
+# lets GitHub mint a short-lived token Entra trusts, so there is no
+# AZURE_CREDENTIALS blob to leak or rotate. AZURE_CLIENT_ID / TENANT_ID /
+# SUBSCRIPTION_ID are identifiers, not secrets.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # QuotesApi targets net10.0 -- see Day7/piece2/QuotesApi/QuotesApi.csproj.
+          dotnet-version: '10.0.x'
+
+      # The gate. This workflow can push an image to a registry and repoint a
+      # live Container App, so it does not get to skip the tests -- a green
+      # ci.yml on some other commit is not evidence about this one.
+      - name: Restore
+        run: dotnet restore Day7/piece2/QuotesApi.slnx
+
+      - name: Build
+        run: dotnet build Day7/piece2/QuotesApi.slnx --no-restore -c Release
+
+      - name: Unit tests
+        run: dotnet test Day7/piece2/Quotes.Tests.Unit --no-build -c Release
+
+      - name: Integration tests
+        run: dotnet test Day7/piece2/Quotes.Tests.Integration --no-build -c Release
+
+      - name: Sign in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # `az acr login` writes a short-lived token into the Docker config, which
+      # is where the .NET SDK's container tooling looks for registry
+      # credentials. No admin username or password is involved -- the ACR admin
+      # account is exactly the stored secret this deployment removed.
+      - name: Sign in to the registry
+        run: az acr login --name "${REGISTRY%%.*}"
+
+      # There is no Dockerfile: .NET 8+ builds an OCI image straight from the
+      # project, so there is nothing to keep in sync with the csproj. The tag is
+      # the commit sha -- never `latest`, which is unversioned in practice and
+      # cannot be rolled back to.
+      - name: Build and push the image
+        run: |
+          dotnet publish Day7/piece2/QuotesApi/QuotesApi.csproj \
+            -c Release \
+            /t:PublishContainer \
+            -p:ContainerRegistry="$REGISTRY" \
+            -p:ContainerRepository="$IMAGE" \
+            -p:ContainerImageTag="${GITHUB_SHA::12}"
+
+      # The corrective step that used to be a manual `az containerapp update`
+      # after every azd run, and the one most often forgotten.
+      - name: Roll the Container App onto the new image
+        run: |
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$REGISTRY/$IMAGE:${GITHUB_SHA::12}"
+
+      # A green deploy step only means Azure accepted the request. It does not
+      # mean the container started -- an unreachable target port, a failed image
+      # pull and an unwritable database path all report success here and then
+      # sit in Activating forever. All three of those actually happened. This
+      # step is what turns them into a red build instead of a working pipeline
+      # in front of a dead app.
+      - name: Wait for the new revision to run
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            state=$(az containerapp revision list \
+              --name "$CONTAINER_APP" --resource-group "$RESOURCE_GROUP" \
+              --query "[?properties.active].properties.runningState | [0]" -o tsv)
+            echo "attempt $attempt: runningState=$state"
+            if [ "$state" = "Running" ]; then
+              echo "Revision is running."
+              exit 0
+            fi
+            if [ "$state" = "Failed" ] || [ "$state" = "Degraded" ]; then
+              echo "::error::The new revision reported $state."
+              az containerapp logs show --name "$CONTAINER_APP" \
+                --resource-group "$RESOURCE_GROUP" --type system --tail 50 || true
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "::error::The new revision did not reach Running within five minutes."
+          az containerapp logs show --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" --type system --tail 50 || true
+          exit 1
+
+      # The last thing that can still be wrong once the container is up: the
+      # app is listening, but not on the port ingress forwards to. A health
+      # probe from outside is the only check that covers the whole path.
+      - name: Smoke-test /health through ingress
+        run: |
+          set -euo pipefail
+          fqdn=$(az containerapp show --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          for attempt in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$fqdn/health" || echo 000)
+            echo "attempt $attempt: GET https://$fqdn/health -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::/health did not return 200 through ingress."
+          exit 1
