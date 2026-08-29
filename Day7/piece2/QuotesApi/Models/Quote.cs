@@ -4,12 +4,12 @@ public class Quote
 {
     private static readonly string[] DefaultBackgroundImageUrls =
     {
-        "/quote-backgrounds/mountain-1.jpg",
-        "/quote-backgrounds/mountain-2.jpg",
-        "/quote-backgrounds/mountain-3.jpg",
-        "/quote-backgrounds/mountain-4.jpg",
-        "/quote-backgrounds/mountain-5.jpg",
-        "/quote-backgrounds/mountain-6.jpg"
+        "/quote-backgrounds/mountain-1.webp",
+        "/quote-backgrounds/mountain-2.webp",
+        "/quote-backgrounds/mountain-3.webp",
+        "/quote-backgrounds/mountain-4.webp",
+        "/quote-backgrounds/mountain-5.webp",
+        "/quote-backgrounds/mountain-6.webp"
     };
 
     public int Id { get; set; }

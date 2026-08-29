@@ -9,7 +9,6 @@ using QuotesApi.Data;
 using QuotesApi.Queries;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
-using System.Text;
 
 namespace QuotesApi.Extensions;
 
@@ -148,20 +147,14 @@ public static class InfrastructureExtensions
             // "does the signature match, and are the claims what we expect".
             .AddJwtBearer("CustomJwt", options =>
             {
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Secret)),
-
-                    ValidateIssuer = true,
-                    ValidIssuer = jwt.Issuer,
-
-                    ValidateAudience = true,
-                    ValidAudience = jwt.Audience,
-
-                    ValidateLifetime = true,
-                    ClockSkew = TimeSpan.Zero // don't give expired tokens extra grace time
-                };
+                // Built by ForwardedUserAuthentication rather than written
+                // out here, because the proxy path validates the very same
+                // kind of token and must hold it to the very same standard.
+                // Two copies is how one of them ends up with ValidateLifetime
+                // quietly relaxed. Same key, issuer, audience, and the same
+                // zero clock skew -- no extra grace for expired tokens.
+                options.TokenValidationParameters =
+                    ForwardedUserAuthentication.CustomJwtParameters(jwt);
             })
 
             // --- Validator #2: tokens issued by Azure Entra ID -----------
@@ -187,6 +180,21 @@ public static class InfrastructureExtensions
                     ValidateAudience = true,
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
+                };
+
+                // The Day 17 BFF authenticates as an application with a
+                // managed-identity token and forwards the real user in
+                // X-Forwarded-Authorization. Without this, that call
+                // authenticates as the *application* and then fails
+                // authorization on every endpoint, because an app-only token
+                // has no "sub" and carries "roles" where the policies expect
+                // "scope". The gates that make honouring the header safe are
+                // in ForwardedUserAuthentication -- read them before
+                // changing anything here.
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = context =>
+                        ForwardedUserAuthentication.OnTokenValidatedAsync(context, jwt, azureAd),
                 };
             })
 

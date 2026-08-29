@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 
-import { Quote } from '../../../../core/models/quote';
+import { Quote, resolveQuoteBackgroundUrl } from '../../../../core/models/quote';
 import { API_BASE_URL } from '../../../../core/services/api-base-url';
 import { Button } from '../../../../shared/components/button/button';
 import { Modal } from '../../../../shared/components/modal/modal';
@@ -29,23 +29,10 @@ export class QuotePreviewDialog {
   readonly closed = output<void>();
   readonly editRequested = output<Quote>();
 
+  /** See resolveQuoteBackgroundUrl -- shared with the card and the detail page. */
   protected backgroundImageUrl(): string {
     const quote = this.quote();
 
-    if (!quote) {
-      return '';
-    }
-
-    const url = quote.backgroundImageUrl;
-
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
-
-    if (url.startsWith('/')) {
-      return `${this.apiBaseUrl}${url}`;
-    }
-
-    return url;
+    return quote ? resolveQuoteBackgroundUrl(quote.backgroundImageUrl, this.apiBaseUrl) : '';
   }
 }

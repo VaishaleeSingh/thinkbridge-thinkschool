@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
-import { Quote } from '../../../../core/models/quote';
+import { Quote, resolveQuoteBackgroundUrl } from '../../../../core/models/quote';
 import { API_BASE_URL } from '../../../../core/services/api-base-url';
 import { Badge } from '../../../../shared/components/badge/badge';
 import { Button } from '../../../../shared/components/button/button';
@@ -131,17 +131,8 @@ export class QuoteCard {
     void this.picker.retryLoad();
   }
 
+  /** See resolveQuoteBackgroundUrl -- shared with the preview dialog and the detail page. */
   protected backgroundImage(): string {
-    const url = this.quote().backgroundImageUrl;
-
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
-
-    if (url.startsWith('/')) {
-      return `${this.apiBaseUrl}${url}`;
-    }
-
-    return url;
+    return resolveQuoteBackgroundUrl(this.quote().backgroundImageUrl, this.apiBaseUrl);
   }
 }

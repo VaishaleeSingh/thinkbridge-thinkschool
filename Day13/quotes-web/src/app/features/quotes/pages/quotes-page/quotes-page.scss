@@ -4,9 +4,14 @@
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   margin-bottom: var(--space-5);
+  // WebP, converted from the 417 kB JPEG this used to be (Day 17). At 96.8 kB
+  // it is the LCP element of this page, and the reason the hero is 1280 px wide
+  // rather than the original 1920: the banner never exceeds ~1200 CSS px, and it
+  // sits behind a two-stop dark gradient at 62% / 44% opacity, which hides
+  // compression artefacts that would be visible on a foreground photo.
   background:
     linear-gradient(115deg, rgb(8 18 36 / 62%), rgb(14 44 63 / 44%)),
-    url('/quotes-hero-bg.jpg') center / cover no-repeat;
+    url('/quotes-hero-bg.webp') center / cover no-repeat;
   box-shadow: var(--shadow-md);
 }
 

@@ -68,9 +68,30 @@ public class CrossCuttingTests
         var listResponse = await clientB.SendAsync(listRequest);
         var json = await listResponse.Content.ReadFromJsonAsync<JsonElement>();
 
-        // Assert -- if the two factories shared a database, this would be
-        // 1 (or more); a fresh, isolated database means 0.
-        json.GetProperty("total").GetInt32().Should().Be(0);
+        // Assert.
+        //
+        // This used to read `total.Should().Be(0)`, on the reasoning that a
+        // fresh database is an empty one. That stopped being true in Day 7:
+        // DbInitializer.SeedAsync -- which is why the deployed app has content
+        // at all -- puts twenty quotes into every new database, and each test
+        // factory gets its own. The assertion was measuring the seed, not the
+        // leak, and it failed at 20 the first time anything ran these tests.
+        //
+        // So check the leak itself instead. It is the narrower claim and the
+        // one the test is named for: whatever else factory B contains, it must
+        // not contain what factory A wrote.
+        using var scopeB = factoryB.Services.CreateScope();
+        var dbB = scopeB.ServiceProvider.GetRequiredService<QuotesDbContext>();
+
+        var leaked = await dbB.Quotes.AnyAsync(quote => quote.Author == "Marcus Aurelius");
+
+        leaked.Should().BeFalse(
+            "factory B must not see the quote factory A created");
+
+        // And the API must be serving THIS factory's database rather than one
+        // shared with A -- a count taken through HTTP that disagrees with the
+        // context behind it would be the same bug wearing a different hat.
+        json.GetProperty("total").GetInt32().Should().Be(await dbB.Quotes.CountAsync());
     }
 
     private static async Task<string> CreateAuthenticatedUserAsync(QuotesApiFactory factory)

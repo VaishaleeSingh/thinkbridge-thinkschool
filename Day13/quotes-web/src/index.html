@@ -17,6 +17,33 @@
     -->
     <meta name="color-scheme" content="light dark" />
 
+    <!--
+      Lighthouse's SEO category checks for a meta description and scores the
+      whole category down without one. It is also the text a link preview uses,
+      which is the reason that check exists.
+    -->
+    <meta
+      name="description"
+      content="Browse, write and collect quotes. A signals-based Angular client for the Quotes API."
+    />
+
+    <!--
+      The hero on /quotes is the LCP element, and it is a CSS background-image --
+      which the preload scanner cannot see, so the browser only discovers it after
+      the stylesheet has parsed. Declaring it here moves the request into the very
+      first round trip and is worth ~0.6 s of LCP on the throttled mobile profile.
+
+      fetchpriority="high" because a preloaded image otherwise queues at Low, behind
+      the twelve card backgrounds this page also requests.
+    -->
+    <link
+      rel="preload"
+      as="image"
+      href="/quotes-hero-bg.webp"
+      type="image/webp"
+      fetchpriority="high"
+    />
+
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
   </head>
   <body>

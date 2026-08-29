@@ -61,27 +61,27 @@ export interface QuoteBackgroundOption {
 export const QUOTE_BACKGROUND_OPTIONS: readonly QuoteBackgroundOption[] = [
   {
     label: 'Mountain Dawn',
-    url: '/quote-backgrounds/mountain-1.jpg',
+    url: '/quote-backgrounds/mountain-1.webp',
   },
   {
     label: 'Alpine Valley',
-    url: '/quote-backgrounds/mountain-2.jpg',
+    url: '/quote-backgrounds/mountain-2.webp',
   },
   {
     label: 'Snow Peaks',
-    url: '/quote-backgrounds/mountain-3.jpg',
+    url: '/quote-backgrounds/mountain-3.webp',
   },
   {
     label: 'Forest Ridge',
-    url: '/quote-backgrounds/mountain-4.jpg',
+    url: '/quote-backgrounds/mountain-4.webp',
   },
   {
     label: 'Lake Reflection',
-    url: '/quote-backgrounds/mountain-5.jpg',
+    url: '/quote-backgrounds/mountain-5.webp',
   },
   {
     label: 'Highland Sunset',
-    url: '/quote-backgrounds/mountain-6.jpg',
+    url: '/quote-backgrounds/mountain-6.webp',
   },
 ] as const;
 
@@ -125,8 +125,27 @@ export function resolveQuoteBackgroundUrl(url: string, apiBaseUrl: string): stri
   }
 
   if (url.startsWith('/')) {
-    return `${apiBaseUrl}${url}`;
+    return `${apiBaseUrl}${toWebp(url)}`;
   }
 
-  return url;
+  return toWebp(url);
 }
+
+/**
+ * The bundled backgrounds are WebP only as of Day 17 -- the JPEGs they were
+ * converted from are gone from `public/`.
+ *
+ * This exists because rows already in the database still hold the old
+ * `/quote-backgrounds/x.jpg` values: the migration that seeded them
+ * (20260824070320_AddQuoteBackgroundImage) has already run, and editing an
+ * applied migration would not re-run it anyway. Rewriting the extension on the
+ * way out means those rows keep rendering without a data migration, and it is a
+ * no-op for anything written since. Only the bundled path is touched -- a remote
+ * URL is someone else's host and is left exactly as stored.
+ */
+function toWebp(url: string): string {
+  return url.startsWith('/quote-backgrounds/') ? url.replace(/\.jpg$/i, '.webp') : url;
+}
+
+
+
