@@ -218,13 +218,58 @@ one.
 | The call to the API carries a managed-identity token (`roles` present, no `scp`/`upn`, `oid` = Function App `principalId`) | **NOT VERIFIED** | Needs a deployed Function App with its identity assigned. `LogTokenShape` in `ApiProxyFunction.cs` exists specifically to produce this evidence on the first live call. |
 | Negative test: removing the app-role assignment makes the call 403 | **NOT VERIFIED** | Same reason. This is the test that makes the MI claim real rather than incidental — it must not be skipped. |
 | Zero secrets in app settings (`az functionapp config appsettings list`) | **NOT VERIFIED** | No resource to query. The design has exactly two non-secret settings — `Api__BaseUrl`, `Api__Audience`. |
-| Zero secrets in the repo | **PARTIALLY VERIFIED** | Reviewed by hand: no secret is introduced by any Day 17 file. `gitleaks` was not available to run. |
+| Zero secrets in the repo | **FAILED, then fixed — see §8** | No Day 17 file introduces a secret, but a pre-existing one was found committed in `Day7/piece2/QuotesApi/appsettings.Development.json`. Removed. The value remains in git history and must be rotated. |
 | Ownership checks still enforced through the BFF (user A cannot read user B's collection) | **NOT VERIFIED** | The single most important regression risk in this design, and it needs a live two-user test. |
 | **The BFF compiles at all** | **NOT VERIFIED** | No .NET SDK on either machine. `Day17/api-bff/*.cs` has never been through a compiler. Package versions in `QuotesBff.csproj` were written from knowledge, not resolved against NuGet. Expect to fix build errors on the first `dotnet build`. This is the same gap Day 13 hit and recorded for its C# changes. |
 | The QuotesApi-side auth change | **NOT WRITTEN** | Plan §3.3 specifies it (app role `Quotes.Proxy`, app-only token gating, `X-Forwarded-Authorization` honoured only behind that gate). No code was written for it, because writing an auth change that cannot be compiled or tested is worse than not writing it. |
 | GitHub Actions workflow runs green | **NOT VERIFIED** | Not pushed. YAML was checked for syntax by eye only; the `npm ci` blocker it would have hit first is fixed (§2). |
 
-## 8. What the next session has to do first
+## 8. A committed secret, found while wiring up `.env`
+
+**This is the finding that matters most in this document, and it was nearly
+missed.** While building `Day17/.env.example` I grepped the repository for the
+JWT signing key and found it in a tracked, committed, pushed file:
+
+```
+Day7/piece2/QuotesApi/appsettings.Development.json
+  Jwt.Secret = <39 characters>
+```
+
+Three things follow from that, in order of importance:
+
+1. **The repository contradicted its own documented design.** The root `README.md`
+   states the signing key "is deliberately not in `appsettings.json`" and gives
+   the `dotnet user-secrets` command for it. `appsettings.Development.json` is
+   still `appsettings`, it is still tracked, and the key was in it. A rule that
+   is documented but not enforced is not a rule — this is exactly the gap that
+   Day 4's startup validation and Day 3's secret handling were meant to close.
+2. **It invalidates the "zero secrets in the repo" line in §7 as it was
+   originally written.** That row now records the failure rather than a clean
+   result. Writing "PARTIALLY VERIFIED — reviewed by hand" was the mistake: a
+   hand review of *Day 17's own files* was true and also not the claim a reader
+   would take from it. The scan should have been repository-wide from the start,
+   and `gitleaks` being unavailable was a reason to grep, not a reason to soften
+   the wording.
+3. **Removing the file's copy is not remediation on its own.** The value is in
+   git history and on the remote, so it must be treated as compromised and
+   rotated in both places it lives:
+   - locally: `dotnet user-secrets --project Day5/piece2/QuotesApi set "Jwt:Secret" "<new 32+ char value>"`
+   - deployed: the `Jwt__Secret` secret on the `quotes-api-cowork` Container App
+
+   Rotating invalidates every issued access and refresh token, so all signed-in
+   sessions end. That is the intended effect of rotating a signing key.
+
+What was changed here: the `Jwt` block is deleted from
+`Day7/piece2/QuotesApi/appsettings.Development.json` (the `Day5` copy never had
+one). Startup validation now fails fast with a readable message until the key is
+supplied through `user-secrets` — which is the behaviour Day 4 built and what the
+README already described.
+
+Worth stating plainly: the deployed API is unaffected by this deletion. It reads
+`Jwt__Secret` from the Container App, not from `appsettings.Development.json`,
+which is not even loaded in Production.
+
+## 9. What the next session has to do first
 
 1. `dotnet build Day17/api-bff` — expect and fix real errors.
 2. `az staticwebapp create --sku Standard` (Free tier cannot have a linked backend).
