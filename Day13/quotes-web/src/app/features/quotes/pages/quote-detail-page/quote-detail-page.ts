@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
-import { Quote, quoteBackgroundImageCss } from '../../../../core/models/quote';
+import { Quote, resolveQuoteBackgroundUrl } from '../../../../core/models/quote';
 import { API_BASE_URL } from '../../../../core/services/api-base-url';
 import { EmptyState } from '../../../../shared/components/empty-state/empty-state';
 import { ErrorState } from '../../../../shared/components/error-state/error-state';
@@ -105,11 +105,10 @@ export class QuoteDetailPage {
     this.quotesStore.items().filter((quote) => quote.id !== this.store.selectedId()),
   );
 
-  /** See `quoteBackgroundImageCss` -- shared with the card and the preview dialog. */
-  protected readonly backgroundImageCss = computed(() => {
+  protected readonly backgroundImage = computed(() => {
     const quote = this.store.quote();
 
-    return quote ? quoteBackgroundImageCss(quote.backgroundImageUrl, this.apiBaseUrl) : 'none';
+    return quote ? resolveQuoteBackgroundUrl(quote.backgroundImageUrl, this.apiBaseUrl) : '';
   });
 
   constructor() {

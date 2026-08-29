@@ -4,8 +4,9 @@
       <div
         class="preview-banner__art"
         [style.background-image]="
-          'linear-gradient(145deg, rgb(10 18 36 / 58%), rgb(11 30 49 / 48%)), ' +
-          backgroundImageCss()
+          'linear-gradient(145deg, rgb(10 18 36 / 58%), rgb(11 30 49 / 48%)), url(' +
+          backgroundImageUrl() +
+          ')'
         "
       >
         <div class="preview-banner__panel">

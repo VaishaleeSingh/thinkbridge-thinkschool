@@ -75,8 +75,8 @@ jobs:
         run: npx ng test --watch=false
 
       # The image budget gate. Day 17 re-encoded public/ from 2.0 MB of
-      # unoptimised JPEG down to 712 kB of AVIF + JPEG; the hero alone went from
-      # 417 kB to 48.9 kB as AVIF. Lighthouse >= 95 depends on that holding, and the
+      # unoptimised JPEG down to 428 kB of WebP; the hero alone went from 417 kB
+      # to 96.8 kB. Lighthouse >= 95 depends on that holding, and the
       # easiest way for it to stop holding is someone dropping a fresh
       # camera-original into public/. This fails the build instead.
       - name: Enforce image budget
@@ -86,7 +86,7 @@ jobs:
 
           # kB ceilings, chosen just above the current sizes so a real regression
           # trips them and normal re-encoding noise does not.
-          LIMITS = {'.avif': 70, '.jpg': 140, '.jpeg': 140, '.png': 100}
+          LIMITS = {'.webp': 110, '.png': 100}
           failures = []
 
           for path in pathlib.Path('public').rglob('*'):
@@ -101,14 +101,11 @@ jobs:
               if status == 'OVER':
                   failures.append(f'{path} is {size:.1f} kB, over the {limit} kB budget')
 
-          # Every JPEG a CSS image-set() references must have its AVIF sibling, or
-          # the AVIF tier resolves to nothing and the browser falls all the way
-          # back to the JPEG -- silently undoing the whole optimisation. There is
-          # no WebP tier by design; see quoteBackgroundImageCss in
-          # src/app/core/models/quote.ts.
-          for jpg in pathlib.Path('public').rglob('*.jpg'):
-              if not jpg.with_suffix('.avif').exists():
-                  failures.append(f'{jpg} has no .avif sibling')
+          # public/ is WebP-only as of Day 17. A .jpg or .avif reappearing here is
+          # either an un-converted asset or a partial revert, and either way it
+          # undoes the payload work silently -- so fail on it rather than ship it.
+          for stale in list(pathlib.Path('public').rglob('*.jpg')) + list(pathlib.Path('public').rglob('*.avif')):
+              failures.append(f'{stale} should be converted to .webp; public/ is WebP-only')
 
           if failures:
               for f in failures:

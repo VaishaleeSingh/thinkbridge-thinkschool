@@ -37,16 +37,24 @@ BFF, and CORS disappears from production entirely.
 ## Status
 
 **Front end: done and measured.** Builds, lints, 83/83 tests pass. `public/` went
-from 2.0 MB of unoptimised JPEG to 712 kB of AVIF + JPEG; the hero a browser
-downloads went 417 kB → 48.9 kB. Lighthouse (mobile, four runs, median): 97
-performance, 100 accessibility, 100 best-practices, 100 SEO. Desktop: 100 across
-the board. Full JSON reports are committed.
+from 2.0 MB of unoptimised JPEG to **428 kB of WebP**; the hero went 417 kB →
+96.8 kB. Lighthouse (mobile, three runs): **96 performance, 100 accessibility,
+100 best-practices, 100 SEO.**
 
-**Deployment: not done.** No Azure resource exists. Neither the sandbox this was
-built in nor the bridged machine can reach `login.microsoftonline.com`, and
-neither has `az`, `func` or `dotnet` — so nothing was created, the BFF has never
-been through a compiler, and the API-side auth change is specified but not
-written. The verification log names every one of those gaps.
+**Deployment: started, not finished.** The Static Web App exists —
+`quotes-web-day17`, **SKU Standard** (the only tier that supports a linked
+backend, which is what holds the managed identity), resource group
+`rg-quotes-api`, default hostname `yellow-river-074adb50f.7.azurestaticapps.net`.
+Source was set to **Other**, not GitHub, so Azure did not write a competing
+workflow file into this repo alongside `day17-swa-deploy.yml`. The deployment
+token is in GitHub secrets and the workflow reaches the deploy step; the first
+attempts failed on the token value, which is where this stands.
+
+Still outstanding: the custom domain, the Function App and its managed identity,
+the app role on the Entra app registration, and the API-side auth change. The BFF
+in `../api-bff/` has never been through a compiler — no .NET SDK was available
+where it was written. `../verification/day17-verification-log.md` §7 is the table
+of every unverified claim.
 
 Three findings from doing the work rather than planning it, all in the log:
 
@@ -56,6 +64,10 @@ Three findings from doing the work rather than planning it, all in the log:
    critical-CSS inliner emits an inline `onload`. Fixed with a CSP hash rather
    than by turning the optimisation off.
 3. Serving the build uncompressed scored 85 where the same build brotli-compressed
-   scored 97. A local Lighthouse run against an uncompressed server under-reports
-   SWA by about 12 points, which is a very plausible thing to spend a day chasing
+   scored 96. A local Lighthouse run against an uncompressed server under-reports
+   SWA by about 11 points, which is a very plausible thing to spend a day chasing
    in the wrong place.
+
+An AVIF tier and a three-format `image-set()` were also built and measured, then
+removed in favour of WebP alone. `docs/day17-implementation-plan.md`, "Formats
+considered", has the numbers and the argument.

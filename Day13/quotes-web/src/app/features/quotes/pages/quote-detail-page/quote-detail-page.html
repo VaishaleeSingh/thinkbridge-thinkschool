@@ -46,8 +46,9 @@
     <article
       class="quote-detail"
       [style.background-image]="
-        'linear-gradient(140deg, rgb(8 16 30 / 78%), rgb(10 26 45 / 62%)), ' +
-        backgroundImageCss()
+        'linear-gradient(140deg, rgb(8 16 30 / 78%), rgb(10 26 45 / 62%)), url(' +
+        backgroundImage() +
+        ')'
       "
       [style.view-transition-name]="'quote-image-' + quote.id"
     >

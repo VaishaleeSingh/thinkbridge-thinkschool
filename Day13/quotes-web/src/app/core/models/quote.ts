@@ -61,27 +61,27 @@ export interface QuoteBackgroundOption {
 export const QUOTE_BACKGROUND_OPTIONS: readonly QuoteBackgroundOption[] = [
   {
     label: 'Mountain Dawn',
-    url: '/quote-backgrounds/mountain-1.jpg',
+    url: '/quote-backgrounds/mountain-1.webp',
   },
   {
     label: 'Alpine Valley',
-    url: '/quote-backgrounds/mountain-2.jpg',
+    url: '/quote-backgrounds/mountain-2.webp',
   },
   {
     label: 'Snow Peaks',
-    url: '/quote-backgrounds/mountain-3.jpg',
+    url: '/quote-backgrounds/mountain-3.webp',
   },
   {
     label: 'Forest Ridge',
-    url: '/quote-backgrounds/mountain-4.jpg',
+    url: '/quote-backgrounds/mountain-4.webp',
   },
   {
     label: 'Lake Reflection',
-    url: '/quote-backgrounds/mountain-5.jpg',
+    url: '/quote-backgrounds/mountain-5.webp',
   },
   {
     label: 'Highland Sunset',
-    url: '/quote-backgrounds/mountain-6.jpg',
+    url: '/quote-backgrounds/mountain-6.webp',
   },
 ] as const;
 
@@ -125,54 +125,27 @@ export function resolveQuoteBackgroundUrl(url: string, apiBaseUrl: string): stri
   }
 
   if (url.startsWith('/')) {
-    return `${apiBaseUrl}${url}`;
+    return `${apiBaseUrl}${toWebp(url)}`;
   }
 
-  return url;
+  return toWebp(url);
 }
 
 /**
- * The `background-image` value for a quote, as a CSS image rather than a bare
- * URL.
+ * The bundled backgrounds are WebP only as of Day 17 -- the JPEGs they were
+ * converted from are gone from `public/`.
  *
- * WHY THIS IS NOT JUST `url(...)`: Day 17 re-encoded the six bundled
- * backgrounds to AVIF alongside the JPEG. A CSS background cannot use
- * `<picture>`, so `image-set()` with `type()` is the only way to let the browser
- * pick. It is worth the indirection because these are the largest assets the app
- * downloads -- mountain-1 is 21.5 kB as AVIF against 211 kB as the original
- * JPEG -- and the quotes list renders up to a page of them at once.
- *
- * The stored value stays `/quote-backgrounds/x.jpg`. Nothing about the API's
- * data changes, and the `backgroundImageUrl must start with /quote-backgrounds/`
- * validator keeps working; the AVIF sibling is derived here, not stored.
- *
- * There is deliberately no WebP entry. Every browser that supports `image-set()`
- * with `type()` (Chrome/Edge 113+, Firefox 113+, Safari 17+) already supports
- * AVIF (Chrome 85+, Firefox 93+, Safari 16.4+), so a WebP tier would never once
- * be the format chosen -- it would be 300 kB of build output that no browser
- * ever requests. The JPEG stays as the last tier because it is the value the API
- * actually stores and the only tier a non-supporting browser can reach.
- *
- * A remote (http/https) background gets a plain `url()`: assuming some arbitrary
- * host also serves `.avif` next to its `.jpg` would produce a background that
- * silently fails to load.
- *
- * Same reason as `resolveQuoteBackgroundUrl` for living here: the card, the
- * preview dialog and the detail page all render a quote's background, and three
- * copies of this rule would be three chances for one of them to be fixed and the
- * others not.
+ * This exists because rows already in the database still hold the old
+ * `/quote-backgrounds/x.jpg` values: the migration that seeded them
+ * (20260824070320_AddQuoteBackgroundImage) has already run, and editing an
+ * applied migration would not re-run it anyway. Rewriting the extension on the
+ * way out means those rows keep rendering without a data migration, and it is a
+ * no-op for anything written since. Only the bundled path is touched -- a remote
+ * URL is someone else's host and is left exactly as stored.
  */
-export function quoteBackgroundImageCss(url: string, apiBaseUrl: string): string {
-  const resolved = resolveQuoteBackgroundUrl(url, apiBaseUrl);
-  const bundled = /^(.*\/quote-backgrounds\/[^/]+)\.jpg$/.exec(resolved);
-
-  if (!bundled) {
-    return `url("${resolved}")`;
-  }
-
-  return (
-    `image-set(` +
-    `url("${bundled[1]}.avif") type("image/avif"), ` +
-    `url("${bundled[1]}.jpg") type("image/jpeg"))`
-  );
+function toWebp(url: string): string {
+  return url.startsWith('/quote-backgrounds/') ? url.replace(/\.jpg$/i, '.webp') : url;
 }
+
+
+

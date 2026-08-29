@@ -96,17 +96,30 @@ at risk — the JS side is fine (largest chunk 178 KB against a 500 KB budget).
 
 Required:
 
-- AVIF + WebP with JPEG fallback via `<picture>`; hero ≤ 60 KB at 1x.
-- 640/1024/1600 px variants with `srcset`/`sizes`.
-- Hero: `fetchpriority="high"` + `<link rel="preload">` (it is the LCP element).
-  The six card backgrounds: `loading="lazy" decoding="async"`.
-- Explicit dimensions or `aspect-ratio` on all of them (CLS).
+- Convert all seven to **WebP** and delete the JPEGs. One format, plain
+  `url(...)`. Do **not** reach for `image-set()` or a multi-format tier list:
+  these are CSS backgrounds, so an unparseable `image-set()` value invalidates the
+  whole `background-image` declaration and the element gets no background at all —
+  gradient included. A single format has no fallback to guard.
+- Resize to what is actually rendered: the hero is a banner that never exceeds
+  ~1200 CSS px (source is 1920), and the cards render at most ~600 CSS px in the
+  grid (sources are 1600). Both are oversized by more than 2x.
+- Update the paths on **both** sides: `QUOTE_BACKGROUND_OPTIONS` in
+  `core/models/quote.ts`, the hero in `quotes-page.scss`, and
+  `DefaultBackgroundImageUrls` in `Day7/piece2/QuotesApi/Models/Quote.cs`.
+  `Quote.ResolveBackgroundImageUrl` validates the `/quote-backgrounds/` prefix
+  only, not the extension — read it and confirm before changing it.
+- Rows already in the database hold `.jpg`, and the migration that seeded them has
+  already run. Handle that in `resolveQuoteBackgroundUrl` rather than by editing
+  an applied migration or writing a data migration you cannot test.
 - Add a `<meta name="description">` to `src/index.html` — it is missing, and SEO
   also has to clear 95.
 - Security headers via `globalHeaders` in `staticwebapp.config.json` for
   Best-practices: `X-Content-Type-Options`, `Referrer-Policy`, and a CSP.
   `style-src` needs `'unsafe-inline'` (Angular inlines component styles);
-  `script-src` must not.
+  `script-src` must not. Angular's `inlineCritical` emits an inline `onload`
+  handler — allow exactly that one with `'unsafe-hashes'` plus its SHA-256 rather
+  than disabling the optimisation, which only trades one audit for another.
 
 Do not remove images or replace them with solid colours to win the score. The
 design stays.
