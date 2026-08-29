@@ -14,11 +14,42 @@ list renders empty with no error message and no console entry that points at the
 API. The static-asset globs are excluded for the same reason: a missing image
 should 404, not silently return the app shell.
 
-## `responseOverrides.404` → `index.html` with 200
+## `responseOverrides.404` — REMOVED, and why it was wrong
 
-Required for client-side routing: a hard refresh on `/quotes/100001` is a real
-GET for a path with no file behind it. Combined with the `exclude` above, this is
-scoped to navigation requests only.
+This file originally carried:
+
+```jsonc
+"responseOverrides": { "404": { "rewrite": "/index.html", "statusCode": 200 } }
+```
+
+on the reasoning that client-side routing needs it, because a hard refresh on
+`/quotes/100001` is a real GET for a path with no file behind it.
+
+That reasoning was wrong twice over, and it was caught against the deployed site
+rather than by reading the file:
+
+```
+GET /api/quotes            -> 200 text/html   (should be 404)
+GET /api/diagnostics/stats -> 200 text/html   (should be 404)
+GET /quotes-hero-bg.jpg    -> 200 text/html   (should be 404 - deleted asset)
+GET /nonexistent-asset.webp-> 200 text/html   (should be 404)
+```
+
+1. **It is redundant.** `navigationFallback.rewrite` already serves `index.html`
+   for a navigation request with no file behind it. Deep links worked without
+   this entry.
+2. **It defeats `navigationFallback.exclude`.** The exclusion does its job —
+   `/api/*` and the asset globs are *not* rewritten, so they 404 correctly — and
+   then `responseOverrides` catches that 404 and rewrites it to `index.html` with
+   a **200**. The two rules fight and `responseOverrides` wins, which reinstates
+   the exact failure this file's `exclude` section exists to prevent: an API error
+   arriving as HTML with a success status, `HttpClient` failing to parse it, and
+   the list rendering empty with no error anywhere.
+
+Removed. `navigationFallback` handles SPA deep links; everything genuinely
+missing now returns a real 404. This mattered immediately: with a backend linked
+to `/api`, a masked 404 would have made every backend failure look like an empty
+response.
 
 ## Cache-Control split
 
