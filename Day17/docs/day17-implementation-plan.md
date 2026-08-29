@@ -145,30 +145,60 @@ The plan above assumed `<picture>`/`srcset`. That was wrong about this codebase:
 `srcset`, and cannot take `fetchpriority` or `loading="lazy"`. Half the planned
 fix did not apply.
 
-What applied instead:
+What was done instead:
 
-1. **`image-set()` with `type()`** — the only format-negotiation mechanism a CSS
-   background has. AVIF first, JPEG as the fallback tier.
+1. **JPEG → WebP, and nothing else.** One format, plain `url(...)`, no
+   `image-set()` and no multi-tier negotiation. An AVIF tier and a three-format
+   `image-set()` were both built and measured first; both were removed in favour
+   of this. The reasoning is in "Formats considered" below, because the simpler
+   thing needs the argument, not the complicated one.
 2. **Resize to what is actually rendered**: hero 1920 → 1280 px (a banner that
    never exceeds ~1200 CSS px); cards 1600 → 900 px (they render at most ~600 CSS
    px in the grid, so the sources were 2.7x oversized).
-3. **No WebP tier.** `image-set()` with `type()` needs Chrome/Edge 113+, Firefox
-   113+, Safari 17+; AVIF is supported from Chrome 85+, Firefox 93+, Safari 16.4+.
-   AVIF support is a strict superset of the support needed to read the
-   `image-set()` at all, so a WebP entry could never be the format chosen. The
-   seven WebP files were generated, measured, and then deleted as dead weight.
-4. **The stored `.jpg` paths are unchanged**, so the API's data and the
-   `backgroundImageUrl must start with /quote-backgrounds/` validator keep
-   working. The AVIF sibling is derived at render time, not stored.
-5. **One helper, three call sites.** `quoteBackgroundImageCss` lives beside
-   `resolveQuoteBackgroundUrl` in `core/models/quote.ts`. The card, the preview
-   dialog and the detail page all use it — the first pass fixed only the card,
-   and the detail page (a measurable route) would have kept fetching the JPEG.
-6. SWA cache headers as planned — see §3.1.
+3. **Paths updated on both sides.** Front end:
+   `QUOTE_BACKGROUND_OPTIONS` in `core/models/quote.ts` and the hero in
+   `quotes-page.scss`. API: `DefaultBackgroundImageUrls` in
+   `Day7/piece2/QuotesApi/Models/Quote.cs`, so new rows store `.webp`.
+   `Quote.ResolveBackgroundImageUrl` validates the `/quote-backgrounds/` prefix
+   only, not the extension, so no validation change was needed.
+4. **Rows already in the database keep working.** The migration that seeded them
+   (`20260824070320_AddQuoteBackgroundImage`) has already run, and editing an
+   applied migration would not re-run it. `resolveQuoteBackgroundUrl` rewrites a
+   bundled `.jpg` path to `.webp` on the way out instead — no data migration, and
+   a no-op for anything written since. A remote URL is left exactly as stored.
+5. **One resolver, three call sites.** The card, the preview dialog and the
+   detail page each had their own inlined copy of the URL-resolution logic,
+   despite the comment on `resolveQuoteBackgroundUrl` saying it exists so that
+   three copies do not. They all call it now.
 
-Result: `public/` 2.0 MB → 712 kB on disk; the hero a browser downloads goes
-417 kB → 48.9 kB. Measured numbers per file are in
-`Day17/verification/day17-verification-log.md` §3.
+Result: `public/` 2.0 MB → 428 kB. The hero goes 417 kB → 96.8 kB.
+Per-file numbers are in `Day17/verification/day17-verification-log.md` §3.
+
+### Formats considered, and why WebP alone
+
+AVIF is genuinely smaller — 48.9 kB against WebP's 96.8 kB for the hero — and a
+four-variant Lighthouse experiment confirmed it: offering AVIF and WebP together,
+Chromium fetched the AVIF every time and scored 100 mobile performance against 97
+for WebP, with ~740 ms better LCP.
+
+It was still dropped, for three reasons that outweigh 3 points on a synthetic
+page:
+
+- **A single format needs no negotiation mechanism.** `image-set()` was the only
+  way to offer two formats to a CSS background, and it has a nasty failure mode:
+  if a browser cannot parse the value, the entire `background-image` declaration
+  is invalid and the element gets *no background at all* — not the fallback, not
+  even the gradient layered with it. Guarding that took a `CSS.supports` probe, a
+  duplicated cascade declaration in the SCSS, and five unit tests. All of that
+  existed to protect a fallback that a single format does not need.
+- **WebP still clears the requirement**, which is what actually had to be true:
+  96 mobile performance, 100 accessibility, 100 best-practices, 100 SEO.
+- **The payload win was mostly the resize, not the codec.** 2.0 MB → 428 kB is
+  the bulk of it; AVIF would have taken 428 kB to ~247 kB, on assets that are not
+  on the first paint of the measured route.
+
+If the score ever needs the last few points, the AVIF tier is a known, measured
+option — not a guess.
 
 ### CLS and the LCP element
 

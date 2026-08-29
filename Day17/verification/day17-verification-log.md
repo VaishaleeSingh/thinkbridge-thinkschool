@@ -58,70 +58,80 @@ install is unaffected — nothing was removed.
 
 ## 3. Image payload
 
-VERIFIED by measurement, not by eye.
+VERIFIED by measurement, not by eye. Re-encoded from the committed originals with
+`sharp` (hero to 1280 px wide, cards to 900 px — the cards render at most ~600 CSS
+px in the grid, so the 1600 px sources were 2.7x oversized). The originals were
+recovered with `git show` rather than kept as a second copy on the branch.
 
-| | before | after | what a browser downloads |
-|---|---|---|---|
-| `quotes-hero-bg.jpg` | 417.1 kB | 93.6 kB JPEG + 48.9 kB AVIF | **48.9 kB** (AVIF) |
-| `mountain-1` | 211.6 kB | 37.6 + 22.0 | 22.0 kB |
-| `mountain-2` | 317.1 kB | 61.5 + 35.7 | 35.7 kB |
-| `mountain-3` | 288.4 kB | 47.6 + 28.8 | 28.8 kB |
-| `mountain-4` | 234.0 kB | 40.5 + 24.5 | 24.5 kB |
-| `mountain-5` | 359.0 kB | 108.5 + 62.8 | 62.8 kB |
-| `mountain-6` | 148.8 kB | 30.0 + 16.7 | 16.7 kB |
-| `public/` total on disk | **2.0 MB** | **712 kB** | |
+| | before (JPEG) | after (WebP) |
+|---|---|---|
+| `quotes-hero-bg` | 417.1 kB | **96.8 kB** |
+| `mountain-1` | 211.6 kB | 30.7 kB |
+| `mountain-2` | 317.1 kB | 61.4 kB |
+| `mountain-3` | 288.4 kB | 47.2 kB |
+| `mountain-4` | 234.0 kB | 38.7 kB |
+| `mountain-5` | 359.0 kB | 108.5 kB |
+| `mountain-6` | 148.8 kB | 23.9 kB |
+| `public/` total | **2.0 MB** | **428 kB** |
 
-Re-encoded from the committed originals with `sharp` (hero to 1280 px wide,
-cards to 900 px — the cards render at most ~600 CSS px in the grid, so the
-1600 px sources were 2.7x oversized). The originals were recovered from
-`git show` rather than kept as a second copy on the branch.
+`public/` is now WebP-only. The JPEGs, an AVIF tier, and the `image-set()`
+machinery that offered them were all built, measured, and then removed — the
+argument is in `Day17/docs/day17-implementation-plan.md`, "Formats considered".
+The short version: AVIF measured 3 performance points and ~740 ms LCP better on a
+synthetic page, and cost a `CSS.supports` probe, a duplicated cascade declaration
+and five unit tests to guard `image-set()`'s failure mode (an unparseable value
+invalidates the whole `background-image` declaration, leaving the element with no
+background at all). WebP alone needs none of that and still clears the target.
 
-### What was deleted, and the argument for each
+The workflow's image-budget gate now fails on any `.jpg` or `.avif` reappearing
+under `public/`, so a partial revert cannot ship quietly.
 
-- **All seven `.webp` files.** Provably never served. `image-set()` with `type()`
-  needs Chrome/Edge 113+, Firefox 113+, Safari 17+; AVIF is supported from
-  Chrome 85+, Firefox 93+, Safari 16.4+. AVIF support is therefore a strict
-  superset of the support needed to read the `image-set()` at all, so the WebP
-  tier could never once be the format chosen — ~300 kB of build output no
-  browser would ever request. Confirmed against the build:
-  `grep -c webp dist/quotes-web/browser/*` → no matches anywhere.
-- **`quotes-hero-bg.svg`.** Unreferenced: `grep -rn "hero-bg.svg" src/` returns
-  nothing. The hero is the `.jpg`/`.avif` pair.
-- **`Day17/original-images/`** and **`Day17/verification/dist-snapshot.tgz`.**
-  Working copies and a build artefact; neither belongs on the branch.
+### Paths updated on both sides
 
-Kept: `favicon.ico` and `quotes-brand-mark.svg` (both referenced —
-`index.html` and `main-layout.html`), and every `.jpg`, because the JPEG is the
-value the API actually stores in `backgroundImageUrl` and the only tier a
-non-supporting browser can reach.
+- Front end: `QUOTE_BACKGROUND_OPTIONS` (`core/models/quote.ts`) and the hero
+  (`quotes-page.scss`).
+- API: `DefaultBackgroundImageUrls` (`Day7/piece2/QuotesApi/Models/Quote.cs`), so
+  new rows store `.webp`. `Quote.ResolveBackgroundImageUrl` validates the
+  `/quote-backgrounds/` prefix only — confirmed by reading it — so no validation
+  change was needed.
+- Rows already in the database still hold `.jpg`. The migration that seeded them
+  has already run, so `resolveQuoteBackgroundUrl` rewrites a bundled `.jpg` path
+  to `.webp` on the way out. No data migration; a no-op for anything newer.
 
-## 4. Three components rendered a quote background; only one had been fixed
+### Also deleted
 
-VERIFIED and corrected. The first pass added `image-set()` to `quote-card` only.
-`grep` for the raw-URL consumers found two more — `quote-preview-dialog.html` and
-`quote-detail-page.html` — both still building `url(...)` from the `.jpg` path,
-so the detail page (a Lighthouse-measurable route) would have kept downloading
-the JPEG and quietly undone the optimisation there.
+- **`quotes-hero-bg.svg`** — unreferenced: `grep -rn "hero-bg.svg" src/` returns
+  nothing.
+- Working copies and generated measurement artefacts (originals folder, build
+  snapshot, Lighthouse JSON, the format-experiment write-up).
 
-`quote-card` and `quote-preview-dialog` also each held their own inlined copy of
-the URL-resolution logic, despite the comment on `resolveQuoteBackgroundUrl` in
-`core/models/quote.ts` explaining that it lives there precisely so three copies
-do not exist. The rule now lives in one place — `quoteBackgroundImageCss`, beside
-`resolveQuoteBackgroundUrl` — and all three components call it. Lint and all 83
-tests still pass after the refactor.
+Kept: `favicon.ico` and `quotes-brand-mark.svg`, both referenced — `index.html`
+and `main-layout.html` respectively.
+
+## 4. Three components rendered a quote background, each with its own copy
+
+VERIFIED and corrected. `core/models/quote.ts` carries a comment on
+`resolveQuoteBackgroundUrl` explaining that it lives there because three places
+render a quote's background and three copies of the rule would be three chances
+for one to be fixed and the others not. Two of those three —
+`quote-card.ts` and `quote-preview-dialog.ts` — had their own inlined copy anyway.
+
+All three now call the shared resolver, which is also where the legacy
+`.jpg` → `.webp` rewrite lives, so it applies everywhere by construction rather
+than by everyone remembering. Lint clean and all 83 tests pass after the change.
 
 ## 5. `staticwebapp.config.json` behaves as intended
 
 VERIFIED against the real production build through `swa-emulate.mjs`
 (`Day17/verification/swa-emulate.mjs`), which applies the actual config file:
 `globalHeaders`, the per-route `Cache-Control` rules, `navigationFallback` with
-its `/api/*` exclusion, and the `.avif` MIME type.
+its `/api/*` exclusion, and the `.webp` MIME type.
 
 ```
 GET /                      → 200, Cache-Control: no-cache, no-store, must-revalidate
 GET /api/quotes            → 404            (NOT index.html with a 200)
 GET /quotes/100001         → 200 index.html (SPA deep link)
-GET /quotes-hero-bg.avif   → Content-Type: image/avif
+GET /quotes-hero-bg.webp   → Content-Type: image/webp
 security headers present   → X-Content-Type-Options, Referrer-Policy,
                              Permissions-Policy, Strict-Transport-Security, CSP
 ```
@@ -138,22 +148,22 @@ chunk hashes that returning browsers cache past. A `"/"` route was added.
 
 ## 6. Lighthouse
 
-VERIFIED, with a stated limitation. Full JSON reports are committed beside this
-file (`lighthouse-mobile.report.json`, `lighthouse-desktop.report.json`,
-`lighthouse-summary.json`) rather than a screenshot of the four circles, because
-the JSON is what lets someone else check the number.
+VERIFIED, with a stated limitation. Measured against the real production build
+through a local emulation of the SWA edge that applies the actual
+`staticwebapp.config.json` and brotli-compresses text responses (see the brotli
+note below). The full JSON reports were generated and read, then deleted rather
+than committed — they are ~360 kB each of machine output and the numbers that
+matter are transcribed here.
 
-Lighthouse 13.4.1, headless Chromium, four mobile runs plus one desktop:
+Lighthouse 13.4.1, headless Chromium 141, three mobile runs:
 
-| run | perf | a11y | best-practices | SEO | FCP | LCP | CLS |
-|---|---|---|---|---|---|---|---|
-| mobile 1 | 97 | 100 | 100 | 100 | 1.9 s | 2.3 s | 0 |
-| mobile 2 | 96 | 100 | 100 | 100 | 1.9 s | 2.4 s | 0 |
-| mobile 3 | 97 | 100 | 100 | 100 | 1.9 s | 2.3 s | 0 |
-| mobile 4 | 97 | 100 | 100 | 100 | 1.9 s | 2.3 s | 0 |
-| desktop | 100 | 100 | 100 | 100 | 0.6 s | 0.7 s | 0 |
+| run | perf | a11y | best-practices | SEO | LCP | CLS |
+|---|---|---|---|---|---|---|
+| mobile 1 | 96 | 100 | 100 | 100 | 2.4 s | 0 |
+| mobile 2 | 96 | 100 | 100 | 100 | 2.4 s | 0 |
+| mobile 3 | 96 | 100 | 100 | 100 | 2.4 s | 0 |
 
-**Median mobile performance 97. All four categories ≥ 95 on every run.**
+**Mobile performance 96, stable across three runs. All four categories ≥ 95 on every run.**
 
 ### Two things the number depends on, both found by measuring
 

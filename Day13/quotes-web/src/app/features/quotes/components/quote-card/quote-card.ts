@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
-import { Quote, quoteBackgroundImageCss } from '../../../../core/models/quote';
+import { Quote, resolveQuoteBackgroundUrl } from '../../../../core/models/quote';
 import { API_BASE_URL } from '../../../../core/services/api-base-url';
 import { Badge } from '../../../../shared/components/badge/badge';
 import { Button } from '../../../../shared/components/button/button';
@@ -131,17 +131,8 @@ export class QuoteCard {
     void this.picker.retryLoad();
   }
 
-  /**
-   * The `background-image` value for the card.
-   *
-   * The rule itself lives in `quoteBackgroundImageCss` beside the Quote model,
-   * because the card, the preview dialog and the detail page all render a
-   * quote's background and this used to be three near-copies of the same
-   * resolution logic. This method exists only so the template calls something on
-   * THIS component -- the same convention the rest of this class uses -- rather
-   * than reaching into an imported function from the markup.
-   */
-  protected backgroundImageCss(): string {
-    return quoteBackgroundImageCss(this.quote().backgroundImageUrl, this.apiBaseUrl);
+  /** See resolveQuoteBackgroundUrl -- shared with the preview dialog and the detail page. */
+  protected backgroundImage(): string {
+    return resolveQuoteBackgroundUrl(this.quote().backgroundImageUrl, this.apiBaseUrl);
   }
 }
