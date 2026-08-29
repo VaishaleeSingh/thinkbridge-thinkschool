@@ -25,6 +25,19 @@
   width: 100%;
   min-width: 0;
 
+  // Every card paints a quote background image, and a full page is twelve of
+  // them -- roughly 500 kB competing with the hero for bandwidth while the hero
+  // is still the LCP element. content-visibility: auto makes the browser skip
+  // rendering for cells outside the viewport, and a skipped subtree does not
+  // fetch its background image until it is scrolled towards.
+  //
+  // contain-intrinsic-size carries the `auto` keyword so the browser remembers
+  // each cell's real height after it has been rendered once; without it the
+  // placeholder height is used on every re-skip and the scrollbar jumps. The
+  // 320px figure is the fallback for the first paint only.
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+
   // Each entrance is staggered slightly so a page of cards arrives as a sequence
   // rather than as a single block.
   //
