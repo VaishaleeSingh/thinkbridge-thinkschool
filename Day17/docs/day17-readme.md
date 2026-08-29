@@ -1,87 +1,74 @@
 # Day 17 — Deploy to Azure Static Web Apps
 
-The exercise: get the Angular 21 front end live on Azure Static Web Apps behind a
-custom domain, calling the real Week-1 API with a **managed identity and no
-stored client secret**, at Lighthouse ≥ 95 — and direct an agent to do the deploy
-rather than hand-rolling it.
+## The task
 
-## Read in this order
+> Angular 21 front end live on Azure Static Web Apps with a custom domain,
+> calling the real Week-1 API via **Managed Identity (no stored client secret)**,
+> Lighthouse **≥ 95**. Direct the agent to do the deploy — SWA config, custom
+> domain, the Managed-Identity wiring — then **verify and defend** it.
 
-| File | What it is |
+## Where things stand
+
+| Deliverable | Status |
 |---|---|
-| `day17-swa-agent-brief.md` | **The brief.** What the agent was told, including the constraints that make the two fakeable claims (the MI call, the Lighthouse number) unfakeable. |
-| `day17-implementation-plan.md` | The plan, with the sections that were wrong revised in place rather than quietly corrected. §0 is the load-bearing one. |
-| `day17-staticwebapp-config-notes.md` | Why every line of `staticwebapp.config.json` is there. |
-| `../verification/day17-verification-log.md` | What was actually run and what it returned — **including a table of everything that is NOT verified and why.** |
-| `../api-bff/` | The BFF that holds the managed identity. Never compiled; see the log. |
-| `../.env.example` | Every configuration value in one place, and — for the two real secrets — the mechanism that owns each instead. |
+| Live SWA URL | ✅ `https://yellow-river-074adb50f.7.azurestaticapps.net` |
+| Lighthouse ≥ 95 | ✅ **99 / 96 / 100 / 100** (authenticated `/quotes`, mobile, incognito) |
+| Managed Identity, no stored secret | ⚠️ in the path for the **ACR image pull**; the BFF that puts it in the **API** path is written but not yet the linked backend |
+| Custom domain | ❌ not configured |
 
-## The one-paragraph version
+![Lighthouse: Performance 99, Accessibility 96, Best Practices 100, SEO 100 on the authenticated /quotes page](./day17-lighthouse-quotes-incognito.png)
 
-A browser cannot hold a managed identity — it is a credential issued by Azure's
-identity endpoint to a compute resource, and anything shipped to a browser to
-obtain one would be the secret the requirement forbids. So the token has to be
-minted server-side, which on SWA means the `/api` backend. It must be a **linked**
-backend (a real Function App with its own system-assigned identity), not SWA's
-built-in managed functions — those run in a Microsoft-managed subscription with no
-identity to assign, and linked backends need the **Standard** plan. The BFF
-attaches the managed-identity token as `Authorization` (authenticating the calling
-*application*) and forwards the user's existing first-party JWT as
-`X-Forwarded-Authorization` (carrying the *user*, which Day 3's resource-based
-ownership checks on collections still need). Collapsing those two into one token
-would silently make every collection readable by everyone.
+## The two documents
 
-`environment.production.ts` already had `apiBaseUrl: ''` — same-origin, by a
-deliberate decision on Day 13 — so the SPA needs no code change to talk to the
-BFF, and CORS disappears from production entirely.
+| file | what it is |
+|---|---|
+| `day17-submission.md` | **The answer.** The brief, the agent's output, and the verification log — the three things the exercise asks for, in that order. |
+| `day17-readme.md` | This file: the task, the current state, and where the code lives. |
 
-## Status
+Everything else that used to live here (the implementation plan, the SWA config
+notes, the agent brief, the redeploy runbook, the verification log) has been
+folded into `day17-submission.md`. The originals are in git history.
 
-**Front end: done and measured.** Builds, lints, 83/83 tests pass. `public/` went
-from 2.0 MB of unoptimised JPEG to **428 kB of WebP**; the hero went 417 kB →
-96.8 kB. Lighthouse (mobile, three runs): **96 performance, 100 accessibility,
-100 best-practices, 100 SEO.**
+## Where the code is
 
-**Deployment: live, with the managed identity still outstanding.**
+| | path |
+|---|---|
+| Front end | `Day13/quotes-web` (Angular 21, zoneless, signals) |
+| SWA config | `Day13/quotes-web/public/staticwebapp.config.json` |
+| Deploy workflow | `.github/workflows/day17-swa-deploy.yml` |
+| .NET gate | `.github/workflows/ci.yml` |
+| Managed-Identity proxy | `Day17/api-bff/` (.NET 8 isolated Function App) |
+| Week-1 API | `Day7/piece2/QuotesApi` |
 
-```
-Live URL : https://yellow-river-074adb50f.7.azurestaticapps.net
-SWA      : quotes-web-day17  (SKU Standard, rg-quotes-api)
-Backend  : Container App -> quotes-api-cowork
-```
+## Azure resources
 
-The front end is deployed and the Week-1 API is linked as the SWA's `/api`
-backend, so the browser talks to the API **same-origin** and there is no CORS
-configuration in this deployment at all. Proven by the API's own
-`application/problem+json` body arriving through `/api/auth/login` — see
-`../verification/day17-verification-log.md` §6b.
+| resource | group | note |
+|---|---|---|
+| `quotes-web-day17` | `rg-quotes-api` | Static Web App, **Standard** — Free has no linked backend |
+| `quotes-api-azd` | `thinkschool-rg` | Container App, **current** image, ACR pull via managed identity |
+| `quotes-api-cowork` | `thinkschool-azd-rg` | Container App, **14 Aug image** — predates `/api/auth/register` |
+| `crqn4pdkxclsa6s` | `thinkschool-rg` | ACR holding the current image |
+| `id-quotes-api-qn4pdkxclsa6s` | `thinkschool-rg` | user-assigned identity, holds **AcrPull** |
+| `thinkschool-quotes-sql` | `thinkschool-rg` | Azure SQL — provisioned, not yet wired to the API |
 
-Still outstanding, and stated plainly because a working deployment is not the
-same as a finished exercise:
+## Three fixes that got the API running
 
-- **The managed identity is not in the path.** A linked Container App
-  authenticates the platform hop; it does not mint an MI token for the API. That
-  needs the BFF in `../api-bff/`, which has never been compiled — no .NET SDK was
-  available where it was written. An SWA environment allows one backend, so
-  adopting it means unlinking the Container App first.
-- **The custom domain** is not set up; the default hostname is what is live.
-- **Lighthouse has not been re-run against the live URL** — the ≥ 95 numbers are
-  from the production build through a local emulation of the SWA edge.
-- **A signed-in session was not tested end to end** (that needed real
-  credentials).
+All three are written up with their logs in `day17-submission.md` §3f.
 
-Three findings from doing the work rather than planning it, all in the log:
+1. **`ImagePullUnauthorized`** — the container app pulled from ACR with admin
+   username + password (a stored secret) while a managed identity with AcrPull
+   sat unused. Switched to the identity.
+2. **Ingress `targetPort: 80`** — the app listens on 8080. Nothing reached it.
+3. **`SQLite Error 14: unable to open database file`** — the connection string
+   was a relative path resolving under `/app`, which the container runs as a
+   non-root user that does not own. Pointed at `/tmp/quotes.db`.
 
-1. `npm ci` was broken on Linux — the Windows-generated lockfile was missing two
-   linux-only packages. That would have failed the first CI run. Fixed.
-2. A strict `script-src 'self'` costs 8 Best-practices points, because Angular's
-   critical-CSS inliner emits an inline `onload`. Fixed with a CSP hash rather
-   than by turning the optimisation off.
-3. Serving the build uncompressed scored 85 where the same build brotli-compressed
-   scored 96. A local Lighthouse run against an uncompressed server under-reports
-   SWA by about 11 points, which is a very plausible thing to spend a day chasing
-   in the wrong place.
+## Still to do
 
-An AVIF tier and a three-format `image-set()` were also built and measured, then
-removed in favour of WebP alone. `docs/day17-implementation-plan.md`, "Formats
-considered", has the numbers and the argument.
+1. Unlink the Container App and link the BFF, so the managed identity is in the
+   **API** path and not just the image pull.
+2. Move off `/tmp/quotes.db` — it dies with the container and is not shared
+   between replicas, so scale is pinned to 1 replica as a stopgap.
+   `thinkschool-quotes-sql` needs the managed identity added as a database user
+   (`CREATE USER ... FROM EXTERNAL PROVIDER`).
+3. Configure the custom domain.
