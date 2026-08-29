@@ -182,8 +182,18 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
-          app_location: 'Day13/quotes-web'
-          output_location: 'dist/quotes-web/browser'
+          # WITH skip_app_build: true, app_location MUST be the built artifact
+          # folder and output_location is ignored entirely. Pointing app_location
+          # at the project root and describing the build output in
+          # output_location -- which is what you do when the action does the
+          # building -- fails with:
+          #   Failed to find a default file in the app artifacts folder
+          #   (Day13/quotes-web). Valid default files: index.html,Index.html.
+          # because it looks for index.html directly under app_location and never
+          # applies output_location. The Build step above already produced
+          # Day13/quotes-web/dist/quotes-web/browser, so that is the artifact.
+          app_location: 'Day13/quotes-web/dist/quotes-web/browser'
+          output_location: ''
           # MUST be empty. This deployment uses a LINKED backend -- a separate
           # Function App with its own system-assigned managed identity, because
           # SWA's built-in managed functions run in a Microsoft-managed
