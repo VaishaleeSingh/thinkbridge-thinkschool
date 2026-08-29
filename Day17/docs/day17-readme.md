@@ -11,9 +11,9 @@
 
 | Deliverable | Status |
 |---|---|
-| Live SWA URL | ✅ `https://yellow-river-074adb50f.7.azurestaticapps.net` |
+| Live app | ✅ https://yellow-river-074adb50f.7.azurestaticapps.net/quotes |
 | Lighthouse ≥ 95 | ✅ **99 / 96 / 100 / 100** (authenticated `/quotes`, mobile, incognito) |
-| Managed Identity, no stored secret | ⚠️ in the path for the **ACR image pull**; the BFF that puts it in the **API** path is written but not yet the linked backend |
+| Managed Identity, no stored secret | ✅ for **deployment** — GitHub OIDC (no service-principal secret), ACR image pull, and Azure SQL login all run on managed identity. ⚠️ not yet for the **API call** itself: the SWA is linked to the Container App, and the BFF that would put an MI token on that hop is written but not the linked backend. |
 | Custom domain | ❌ not configured |
 
 ![Lighthouse: Performance 99, Accessibility 96, Best Practices 100, SEO 100 on the authenticated /quotes page](./day17-lighthouse-quotes-incognito.png)
@@ -49,7 +49,7 @@ folded into `day17-submission.md`. The originals are in git history.
 | `quotes-api-cowork` | `thinkschool-azd-rg` | Container App, **14 Aug image** — predates `/api/auth/register` |
 | `crqn4pdkxclsa6s` | `thinkschool-rg` | ACR holding the current image |
 | `id-quotes-api-qn4pdkxclsa6s` | `thinkschool-rg` | user-assigned identity, holds **AcrPull** |
-| `thinkschool-quotes-sql` | `thinkschool-rg` | Azure SQL — provisioned, not yet wired to the API |
+| `thinkschool-quotes-sql` | `thinkschool-rg` | Azure SQL — **live**, `quotesdb`, app connects with managed identity (no password anywhere) |
 
 ## Three fixes that got the API running
 
@@ -67,8 +67,8 @@ All three are written up with their logs in `day17-submission.md` §3f.
 
 1. Unlink the Container App and link the BFF, so the managed identity is in the
    **API** path and not just the image pull.
-2. Move off `/tmp/quotes.db` — it dies with the container and is not shared
-   between replicas, so scale is pinned to 1 replica as a stopgap.
-   `thinkschool-quotes-sql` needs the managed identity added as a database user
-   (`CREATE USER ... FROM EXTERNAL PROVIDER`).
+2. Replace `EnsureCreatedAsync()` with `MigrateAsync()` for SQL Server, and
+   regenerate `QuotesApi.Migrations.SqlServer` — it stops at 12 August and is
+   missing `AddQuoteAuthorIndex` and `AddQuoteBackgroundImage`. See the note
+   below.
 3. Configure the custom domain.

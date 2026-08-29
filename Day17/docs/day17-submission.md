@@ -12,7 +12,7 @@ output, and the verification log.
 
 | | |
 |---|---|
-| Live SWA | `https://yellow-river-074adb50f.7.azurestaticapps.net` |
+| Live app | https://yellow-river-074adb50f.7.azurestaticapps.net/quotes |
 | SWA resource | `quotes-web-day17` (SKU **Standard** — Free has no linked backend) |
 | Front end | `Day13/quotes-web` (Angular 21, zoneless, signals) |
 | Week-1 API | `Day7/piece2/QuotesApi` on Azure Container Apps |
@@ -347,27 +347,63 @@ looking *"revision won't activate"*.
 | **The SWA↔backend link is broken or re-pointed** | `/api/*` → `404`, front end shows *"That item no longer exists"* | this already happened — see below. |
 | **API moves to another origin** | CORS failure | `apiBaseUrl` must be set **and** the origin added to `Cors:AllowedOrigins` **and** `connect-src` widened in the CSP. One without the others looks like an outage. |
 
-### 3h. Still open — stated rather than glossed over
+### 3h. Where the managed identity actually is, and what is still open
 
-1. **The managed identity is not yet in the live request path.** The SWA is linked
-   to a Container App directly. That link authenticates the platform hop; it does
-   **not** mint a managed-identity token for the API. The BFF in `Day17/api-bff/`
-   is written and holds the identity, but an SWA environment can have only one
-   backend, so switching to it means unlinking the Container App first. MI *is*
-   genuinely in the path for the ACR image pull (§3f) — that is a real use, but it
-   is not the API call the brief asks about.
-2. **`/api/auth/register` and the stale backend.** `quotes-api-cowork` runs a
-   **14 August** image (`crzteoe67vlaev6.azurecr.io/quotes-api:azd-deploy-1786708976`)
-   that predates `/register` — added later in `Day7/piece2`. The current image is on
-   `quotes-api-azd`. Whichever app the SWA points at must be the one running the
-   current image, or account creation 404s.
-3. **`/tmp/quotes.db` is not a real database.** The file dies with the container and
-   two replicas do not share it — register on replica A then login on replica B is a
-   clean `401`. Scale is pinned to 1 replica as a stopgap. `thinkschool-quotes-sql`
-   exists and is where this belongs; that needs the managed identity added as a
-   database user (`CREATE USER ... FROM EXTERNAL PROVIDER`).
-4. **No custom domain** is configured yet.
-5. **Lighthouse is measured and passing (99/96/100/100), but on the build that
-   was live at the time.** Commit `21882aa` is not deployed yet — it needs a push
-   to trigger `day17-swa-deploy`. The two changes in it only reduce work, so the
-   score should hold or improve, but that has not been re-measured.
+**In the path, and provable:**
+
+- **The pipeline authenticates with GitHub OIDC.** `azure/login@v2` with a
+  federated credential — no service-principal secret exists to leak or rotate.
+  Getting the subject right took one failed run: GitHub presented
+  `repo:thinkbridge-thinkschool@285446293/VaishaleeSingh@1331675643:ref:...`,
+  the ID-augmented form, and the credential had been created with the
+  name-based form. `AADSTS700213` names the presented subject in full, so the
+  fix came from the error rather than from guessing.
+- **The image pull uses the managed identity** — see §3f.
+- **Azure SQL login uses the managed identity.**
+  `Authentication=Active Directory Managed Identity`, with the identity added
+  as a contained database user. No connection-string password anywhere.
+  Worth recording: for a service principal, Azure SQL derives the user's SID
+  from the **application (client) id**, not the object id. The database user
+  maps to `0a7acd1c-…`, which is what `User Id=` in the connection string must
+  also be. Passing the object id to `WITH OBJECT_ID` would have created a user
+  that authenticates as nothing, and the failure would have surfaced much later
+  as a generic "login failed".
+
+**Not in the path:** the API call itself. The SWA is linked directly to the
+Container App. That link authenticates the platform hop -- Container Apps
+authentication rejects anything not coming from the SWA with a 401, which is
+why §3e's smoke test goes through the front door -- but it does not mint a
+managed-identity token for the API. `Day17/api-bff/` holds the identity that
+would, and `ForwardedUserAuthentication` (added this session) is the API half
+that makes switching to it safe rather than breaking every ownership check. An
+SWA environment gets one backend, so the switch means unlinking the Container
+App first.
+
+**Still open:**
+
+1. **Link the BFF as the SWA backend**, so the managed identity is on the API
+   hop too. Both halves now exist; this is a configuration change plus a
+   verification pass.
+2. **`Program.cs:131` calls `EnsureCreatedAsync()` for SQL Server.** This is the
+   defect that cost the most time tonight and it is still there. `EnsureCreated`
+   does nothing at all when the database already has tables -- no error, no log
+   line -- so the app reported "Application started" against a schema built from
+   a much older model. `RefreshTokens` did not exist, and registration failed
+   with `Invalid object name 'RefreshTokens'`; `Quotes` was missing
+   `BackgroundImageUrl`, and listing quotes 500'd. Both were patched by hand
+   against the definitions in `QuotesApi.Migrations.SqlServer`, which is itself
+   **stale** -- it stops at `20260812114103_InitialCreate` and never received
+   `AddQuoteAuthorIndex` (21 Aug) or `AddQuoteBackgroundImage` (24 Aug). The fix
+   is to regenerate those migrations and call `MigrateAsync()` on both branches,
+   so the schema is versioned rather than inferred.
+3. **`ci.yml` builds and tests `Day5/piece2`,** while `Day7/piece2` is what ships
+   -- see §3f. `day17-api-deploy.yml` now covers Day 7, but the PR gate still
+   does not.
+4. **`ForwardedUserAuthentication` has no tests.** Four security gates, none
+   exercised. `AuthSchemeSelector` was extracted into its own class precisely so
+   a smaller decision than this one could be unit tested; this deserves the same.
+5. **No custom domain.**
+6. **Data Protection keys are stored inside the container** and are lost on every
+   restart. Harmless today -- the JWTs are signed with the configured HMAC secret,
+   not with Data Protection -- but anything cookie- or antiforgery-based added
+   later would break on each deploy.
