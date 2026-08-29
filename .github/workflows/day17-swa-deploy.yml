@@ -1,0 +1,172 @@
+name: day17-swa-deploy
+
+# Day 17 -- deploy Day13/quotes-web to Azure Static Web Apps.
+#
+# A separate workflow from ci.yml on purpose. ci.yml is the .NET gate: it
+# restores, builds and tests QuotesApi.slnx and smoke-tests the container image.
+# It has no reason to know that a front end exists, and adding front-end steps
+# to it would mean a broken Angular build blocks a pure-API pull request.
+#
+# WHAT THIS WORKFLOW DOES NOT DO: it does not deploy the BFF. The Function App
+# that holds the managed identity is deployed by day17-bff-deploy.yml, because
+# `api_location` here must be empty -- see the note on that input below.
+
+on:
+  push:
+    branches:
+      - main
+      - day17-deploy-azure-static-web-apps
+    paths:
+      - 'Day13/quotes-web/**'
+      - '.github/workflows/day17-swa-deploy.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [ main ]
+    paths:
+      - 'Day13/quotes-web/**'
+      - '.github/workflows/day17-swa-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  # A second push while a deploy is in flight should replace it, not race it:
+  # two concurrent uploads to the same SWA environment can interleave and leave
+  # index.html pointing at chunk hashes from the other build.
+  group: swa-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: Day13/quotes-web
+
+jobs:
+  build_and_deploy:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Day13/quotes-web/package-lock.json
+
+      # npm ci, not npm install: CI must fail on a lockfile that has drifted
+      # rather than quietly resolving something different from what was tested.
+      #
+      # This step failed the first time it was run on Linux: the lockfile had
+      # been generated on Windows and was missing @emnapi/core and
+      # @emnapi/runtime, which are pulled in only by the linux-x64 optional
+      # dependency graph. Regenerating the lockfile on Linux added exactly those
+      # two entries and removed nothing, so the Windows install is unaffected.
+      # Worth knowing, because the symptom -- "npm ci can only install packages
+      # when your package.json and package-lock.json are in sync" -- reads like a
+      # dependency mistake rather than a platform one.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npx ng test --watch=false
+
+      # The image budget gate. Day 17 re-encoded public/ from 2.0 MB of
+      # unoptimised JPEG down to 712 kB of AVIF + JPEG; the hero alone went from
+      # 417 kB to 48.9 kB as AVIF. Lighthouse >= 95 depends on that holding, and the
+      # easiest way for it to stop holding is someone dropping a fresh
+      # camera-original into public/. This fails the build instead.
+      - name: Enforce image budget
+        run: |
+          python3 - <<'PYEOF'
+          import pathlib, sys
+
+          # kB ceilings, chosen just above the current sizes so a real regression
+          # trips them and normal re-encoding noise does not.
+          LIMITS = {'.avif': 70, '.jpg': 140, '.jpeg': 140, '.png': 100}
+          failures = []
+
+          for path in pathlib.Path('public').rglob('*'):
+              if not path.is_file():
+                  continue
+              limit = LIMITS.get(path.suffix.lower())
+              if limit is None:
+                  continue
+              size = path.stat().st_size / 1024
+              status = 'ok' if size <= limit else 'OVER'
+              print(f'{status:>4}  {size:7.1f} kB  (limit {limit:4d})  {path}')
+              if status == 'OVER':
+                  failures.append(f'{path} is {size:.1f} kB, over the {limit} kB budget')
+
+          # Every JPEG a CSS image-set() references must have its AVIF sibling, or
+          # the AVIF tier resolves to nothing and the browser falls all the way
+          # back to the JPEG -- silently undoing the whole optimisation. There is
+          # no WebP tier by design; see quoteBackgroundImageCss in
+          # src/app/core/models/quote.ts.
+          for jpg in pathlib.Path('public').rglob('*.jpg'):
+              if not jpg.with_suffix('.avif').exists():
+                  failures.append(f'{jpg} has no .avif sibling')
+
+          if failures:
+              for f in failures:
+                  print(f'::error::{f}')
+              sys.exit(1)
+
+          print('Image budget OK.')
+          PYEOF
+
+      - name: Build
+        run: npx ng build
+
+      # staticwebapp.config.json lives in public/, not the project root, so the
+      # Angular build copies it into dist/quotes-web/browser/. SWA reads the file
+      # from the deployed artifact -- a copy sitting at the project root is never
+      # uploaded and is silently ignored, which looks exactly like the config
+      # having no effect.
+      - name: Confirm the SWA config was shipped
+        run: |
+          test -f dist/quotes-web/browser/staticwebapp.config.json \
+            || { echo "::error::staticwebapp.config.json missing from the build output"; exit 1; }
+          python3 -c "
+          import json, sys
+          cfg = json.load(open('dist/quotes-web/browser/staticwebapp.config.json'))
+          exclude = cfg['navigationFallback']['exclude']
+          assert '/api/*' in exclude, 'navigationFallback.exclude must contain /api/* -- without it API errors return index.html with a 200'
+          print('SWA config present and /api/* excluded from the SPA fallback.')
+          "
+
+      - name: Deploy to Azure Static Web Apps
+        id: deploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: 'Day13/quotes-web'
+          output_location: 'dist/quotes-web/browser'
+          # MUST be empty. This deployment uses a LINKED backend -- a separate
+          # Function App with its own system-assigned managed identity, because
+          # SWA's built-in managed functions run in a Microsoft-managed
+          # subscription and cannot be given an identity to use. A non-empty
+          # api_location makes SWA try to build and host a managed API as well,
+          # which conflicts with the link (an environment may have one backend
+          # type, not both).
+          api_location: ''
+          skip_app_build: true
+
+  # Tear down the preview environment when a PR closes. Note that PR preview
+  # environments do not support linked backends, so /api/* 404s on a preview URL.
+  # That is a platform limitation, not a misconfiguration -- previews are
+  # static-only by design here.
+  close_pull_request:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close preview environment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: close

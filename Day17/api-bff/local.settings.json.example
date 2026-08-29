@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+
+    "Api__BaseUrl": "https://quotes-api-cowork.whitestone-71ebd55e.centralindia.azurecontainerapps.io",
+    "Api__Audience": "api://quotes-api/access"
+  }
+}

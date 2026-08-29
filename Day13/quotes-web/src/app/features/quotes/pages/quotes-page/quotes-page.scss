@@ -4,9 +4,30 @@
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   margin-bottom: var(--space-5);
+  // AVIF / JPEG rather than a bare url(): this is the LCP element of the quotes
+  // page and was a 417 KB JPEG before Day 17. A CSS background cannot use
+  // <picture>, so image-set() with type() is what lets the browser choose —
+  // 48.9 KB as AVIF against 93.6 KB as JPEG. The browser takes the first type it
+  // understands, so the JPEG is a genuine fallback, not a second fetch.
+  //
+  // There is deliberately no WebP tier: every browser that understands
+  // image-set() with type() (Chrome/Edge 113+, Firefox 113+, Safari 17+) already
+  // supports AVIF (Chrome 85+, Firefox 93+, Safari 16.4+), so a WebP entry would
+  // never once be the format chosen. See quoteBackgroundImageCss in
+  // core/models/quote.ts, which drops it for the same reason.
+  //
+  // The source is 1280 px wide, not the original 1920: this element is a banner
+  // that never exceeds ~1200 CSS px, and it sits behind a two-stop dark gradient
+  // at 62% / 44% opacity, which hides compression artefacts that would be
+  // visible on a foreground photo. That is why the quality can go as low as it
+  // does here without the design changing.
   background:
     linear-gradient(115deg, rgb(8 18 36 / 62%), rgb(14 44 63 / 44%)),
-    url('/quotes-hero-bg.jpg') center / cover no-repeat;
+    image-set(
+        url('/quotes-hero-bg.avif') type('image/avif'),
+        url('/quotes-hero-bg.jpg') type('image/jpeg')
+      )
+      center / cover no-repeat;
   box-shadow: var(--shadow-md);
 }
 

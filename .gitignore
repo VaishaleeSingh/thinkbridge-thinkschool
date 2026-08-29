@@ -17,3 +17,7 @@ _to_delete/
 
 # dependency installs (Day13 verification tooling: playwright, axe-core, angular/cli)
 node_modules/
+
+# Day 17: build snapshots used for local Lighthouse runs
+Day17/verification/dist-snapshot.tgz
+Day17/original-images/

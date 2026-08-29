@@ -130,3 +130,49 @@ export function resolveQuoteBackgroundUrl(url: string, apiBaseUrl: string): stri
 
   return url;
 }
+
+/**
+ * The `background-image` value for a quote, as a CSS image rather than a bare
+ * URL.
+ *
+ * WHY THIS IS NOT JUST `url(...)`: Day 17 re-encoded the six bundled
+ * backgrounds to AVIF alongside the JPEG. A CSS background cannot use
+ * `<picture>`, so `image-set()` with `type()` is the only way to let the browser
+ * pick. It is worth the indirection because these are the largest assets the app
+ * downloads -- mountain-1 is 21.5 kB as AVIF against 211 kB as the original
+ * JPEG -- and the quotes list renders up to a page of them at once.
+ *
+ * The stored value stays `/quote-backgrounds/x.jpg`. Nothing about the API's
+ * data changes, and the `backgroundImageUrl must start with /quote-backgrounds/`
+ * validator keeps working; the AVIF sibling is derived here, not stored.
+ *
+ * There is deliberately no WebP entry. Every browser that supports `image-set()`
+ * with `type()` (Chrome/Edge 113+, Firefox 113+, Safari 17+) already supports
+ * AVIF (Chrome 85+, Firefox 93+, Safari 16.4+), so a WebP tier would never once
+ * be the format chosen -- it would be 300 kB of build output that no browser
+ * ever requests. The JPEG stays as the last tier because it is the value the API
+ * actually stores and the only tier a non-supporting browser can reach.
+ *
+ * A remote (http/https) background gets a plain `url()`: assuming some arbitrary
+ * host also serves `.avif` next to its `.jpg` would produce a background that
+ * silently fails to load.
+ *
+ * Same reason as `resolveQuoteBackgroundUrl` for living here: the card, the
+ * preview dialog and the detail page all render a quote's background, and three
+ * copies of this rule would be three chances for one of them to be fixed and the
+ * others not.
+ */
+export function quoteBackgroundImageCss(url: string, apiBaseUrl: string): string {
+  const resolved = resolveQuoteBackgroundUrl(url, apiBaseUrl);
+  const bundled = /^(.*\/quote-backgrounds\/[^/]+)\.jpg$/.exec(resolved);
+
+  if (!bundled) {
+    return `url("${resolved}")`;
+  }
+
+  return (
+    `image-set(` +
+    `url("${bundled[1]}.avif") type("image/avif"), ` +
+    `url("${bundled[1]}.jpg") type("image/jpeg"))`
+  );
+}

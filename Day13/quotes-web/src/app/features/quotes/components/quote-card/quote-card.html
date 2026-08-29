@@ -2,9 +2,8 @@
   <article
     class="quote"
     [style.background-image]="
-      'linear-gradient(140deg, rgb(8 16 30 / 76%), rgb(10 26 45 / 60%)), url(' +
-      backgroundImage() +
-      ')'
+      'linear-gradient(140deg, rgb(8 16 30 / 76%), rgb(10 26 45 / 60%)), ' +
+      backgroundImageCss()
     "
     [style.view-transition-name]="'quote-image-' + quote().id"
   >
