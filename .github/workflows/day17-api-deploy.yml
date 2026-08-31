@@ -33,8 +33,14 @@ concurrency:
   # A second push while a rollout is in flight should replace it, not race it --
   # two `containerapp update` calls interleaving can leave the app pointing at
   # the older of the two images.
-  group: api-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  # Grouped by PR number for pull-request runs so a re-push replaces only that
+  # PR's own in-flight run, and cancel-in-progress is off for main: a rollout to
+  # production should queue behind the previous one, not cancel it. The SWA
+  # workflow lost a production deploy to exactly that -- the run for a merge
+  # commit on main was cancelled by a later request for the same group, so the
+  # live site stayed on the previous commit with nothing red to show it.
+  group: api-deploy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   REGISTRY: crqn4pdkxclsa6s.azurecr.io

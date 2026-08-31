@@ -31,11 +31,25 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # A second push while a deploy is in flight should replace it, not race it:
-  # two concurrent uploads to the same SWA environment can interleave and leave
-  # index.html pointing at chunk hashes from the other build.
-  group: swa-${{ github.ref }}
-  cancel-in-progress: true
+  # Two concurrent uploads to the same SWA environment can interleave and leave
+  # index.html pointing at chunk hashes from the other build, so runs that
+  # target the same environment must be serialised. What they must NOT do is
+  # cancel each other when the target is production.
+  #
+  # The old rule was group: swa-${{ github.ref }} with cancel-in-progress: true
+  # for every event, and it silently skipped a production deploy: the run for
+  # the merge commit on main was cancelled two seconds in with "Canceling since
+  # a higher priority waiting request for swa-refs/heads/main exists", so main
+  # was never uploaded even though every check went green. A cancelled
+  # production deploy is worse than a queued one -- it leaves the live site on
+  # the previous commit with nothing red to show it.
+  #
+  # So: pull-request runs group by PR number (a re-push to the same PR still
+  # replaces its own in-flight preview build), and everything else groups by
+  # ref. cancel-in-progress is off for main, which makes production deploys
+  # queue and run in order instead of pre-empting one another.
+  group: swa-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 defaults:
   run:
