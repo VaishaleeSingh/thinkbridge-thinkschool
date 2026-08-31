@@ -174,6 +174,10 @@ app.MapQuotesHealthChecks();
 app.MapQuoteEndpoints();
 app.MapCollectionEndpoints();
 
+// Day 18 -- requests enqueue quote-author reports and return 202 immediately;
+// QueuedBackgroundJobService drains the bounded channel outside the request.
+app.MapBackgroundJobEndpoints();
+
 // Day 11 -- the deliberately slow endpoint used for performance profiling,
 // plus the seed/index/stats helpers needed to profile it. Mapped LAST and,
 // unlike everything above, mapped conditionally: MapDiagnosticsEndpoints

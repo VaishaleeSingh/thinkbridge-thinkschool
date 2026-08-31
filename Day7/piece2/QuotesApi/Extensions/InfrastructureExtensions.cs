@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using QuotesApi.Authorization;
+using QuotesApi.BackgroundJobs;
 using QuotesApi.Configuration;
 using QuotesApi.Data;
 using QuotesApi.Queries;
@@ -75,6 +76,27 @@ public static class InfrastructureExtensions
         // A new instance per resolution is fine because there's no
         // per-request or app-wide state to keep consistent.
         services.AddTransient<IQuoteTextNormalizer, QuoteTextNormalizer>();
+
+        // Day 18 -- a bounded in-memory queue shared by HTTP producers and
+        // one hosted consumer. The processor remains scoped because it owns a
+        // scoped QuotesDbContext; QueuedBackgroundJobService creates a fresh
+        // scope for every item rather than capturing a request scope.
+        services
+            .AddOptions<BackgroundJobQueueOptions>()
+            .Bind(configuration.GetSection(BackgroundJobQueueOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddSingleton<IBackgroundJobQueue, InMemoryBackgroundJobQueue>();
+        services.AddSingleton<IBackgroundJobStore, InMemoryBackgroundJobStore>();
+        services.AddScoped<IQuoteAuthorReportProcessor, QuoteAuthorReportProcessor>();
+        services.AddHostedService<QueuedBackgroundJobService>();
+
+        var shutdownTimeoutSeconds = configuration.GetValue<int?>(
+            $"{BackgroundJobQueueOptions.SectionName}:ShutdownTimeoutSeconds") ?? 15;
+
+        services.Configure<HostOptions>(options =>
+            options.ShutdownTimeout = TimeSpan.FromSeconds(shutdownTimeoutSeconds));
 
         // Scoped -- both talk to QuotesDbContext (itself scoped), so they
         // need to live no longer than one request too, otherwise they'd
