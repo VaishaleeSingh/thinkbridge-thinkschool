@@ -14,8 +14,11 @@ name: day17-swa-deploy
 on:
   push:
     branches:
+      # main only. Day 17 deployed from its own feature branch while the SWA
+      # resource was being wired up; that branch is merged and the resource now
+      # takes production uploads from main. Leaving the old branch here would
+      # let a stale re-push overwrite the production environment.
       - main
-      - day17-deploy-azure-static-web-apps
     paths:
       - 'Day13/quotes-web/**'
       - '.github/workflows/day17-swa-deploy.yml'
@@ -135,22 +138,31 @@ jobs:
           print('SWA config present and /api/* excluded from the SPA fallback.')
           "
 
-      # DIAGNOSTIC, and the reason it exists: two careful pastes of the deployment
-      # token both failed with "No matching Static Web App was found or the api key
-      # was invalid", while the same run validated the app directory fine. That
-      # error has exactly one input -- the token string -- so this measures it
-      # rather than guessing again.
+      # PRE-FLIGHT on the one input the deploy action cannot recover from. It
+      # prints LENGTHS ONLY, never the value.
       #
-      # It prints LENGTHS ONLY, never the value. An Azure SWA deployment token is a
-      # long hex string; if the raw length exceeds the whitespace-stripped length,
-      # the secret picked up a trailing newline or space when it was saved (the
-      # GitHub secret box is a textarea, so a stray Enter is easy), and the API
-      # rejects it as malformed. If the two lengths match and the total looks
-      # plausible, the token is intact and the fault is elsewhere -- which is worth
-      # knowing before anyone re-pastes it a third time.
+      # Two different problems used to arrive as the same red X here, and they
+      # have nothing in common except the step they fail:
+      #
+      #   * The secret is present but malformed -- a trailing newline picked up
+      #     from the GitHub secret textarea, or a paste that was cut short. The
+      #     deploy action reports this as "No matching Static Web App was found
+      #     or the api key was invalid", which reads like an Azure-side problem.
+      #
+      #   * The secret is not visible to the run at all, which measures as
+      #     length 0. This is NOT a bad paste, so telling someone to re-paste it
+      #     wastes their time -- the secret exists somewhere the run cannot read
+      #     it, and only four things cause that.
+      #
+      # A fork pull request is the one case where length 0 is expected and not a
+      # mistake: GitHub deliberately withholds secrets from it. That skips the
+      # deploy with a notice instead of failing a check the contributor has no
+      # way to make green.
       - name: Check the shape of the deployment token
+        id: token
         env:
           RAW: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
         run: |
           STRIPPED="$(printf '%s' "$RAW" | tr -d '[:space:]')"
           {
@@ -160,23 +172,40 @@ jobs:
             echo "|---|---|"
             echo "| raw length | ${#RAW} |"
             echo "| whitespace-stripped length | ${#STRIPPED} |"
-            echo "| secret present | $([ -n "$RAW" ] && echo yes || echo NO) |"
+            echo "| secret visible to this run | $([ -n "$STRIPPED" ] && echo yes || echo NO) |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "$STRIPPED" ]; then
+            if [ "$IS_FORK_PR" = "true" ]; then
+              echo "::notice::Fork pull request -- GitHub withholds deployment secrets from it by design. Skipping the deploy; it runs on merge to main."
+              echo "deploy=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "::error::AZURE_STATIC_WEB_APPS_API_TOKEN measured 0 characters, so this run cannot see the secret at all. This is not a truncated paste. Check, in this order: (1) it is saved on THIS repository (Settings > Secrets and variables > Actions on thinkbridge-thinkschool/VaishaleeSingh) and not on a personal fork; (2) it is under Secrets, not Variables; (3) if it was saved as an Environment secret, this job must declare that environment with a top-level environment: key, otherwise the secret is invisible to it; (4) the name matches exactly, including case and underscores."
+            exit 1
+          fi
 
           if [ "${#RAW}" -ne "${#STRIPPED}" ]; then
             echo "::error::The secret contains whitespace (raw ${#RAW} vs stripped ${#STRIPPED}). Re-save it with no trailing newline or space."
             exit 1
           fi
 
+          # An Azure SWA deployment token is a long hex string; anything this
+          # short is a paste that was cut off, not a real token.
           if [ "${#STRIPPED}" -lt 40 ]; then
-            echo "::error::The secret is only ${#STRIPPED} characters -- far shorter than an Azure SWA deployment token. It was probably truncated on copy."
+            echo "::error::The secret is only ${#STRIPPED} characters -- far shorter than an Azure SWA deployment token. It was probably truncated on copy. Re-copy it from the Static Web App: Overview > Manage deployment token."
             exit 1
           fi
 
           echo "Token is ${#STRIPPED} characters with no whitespace."
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy to Azure Static Web Apps
         id: deploy
+        # Skipped only when the pre-flight found no secret on a fork pull
+        # request. Every other missing-secret case already failed above.
+        if: steps.token.outputs.deploy == 'true'
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
@@ -209,7 +238,13 @@ jobs:
   # That is a platform limitation, not a misconfiguration -- previews are
   # static-only by design here.
   close_pull_request:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    # A fork PR never got a preview environment (no secret, so no upload), and
+    # this job would fail on the same missing secret while trying to tear down
+    # something that was never created.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.action == 'closed'
+      && github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     steps:
       - name: Close preview environment

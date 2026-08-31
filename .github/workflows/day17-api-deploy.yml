@@ -16,7 +16,9 @@ name: day17-api-deploy
 
 on:
   push:
-    branches: [main, day17-deploy-azure-static-web-apps]
+    # main only -- the Day 17 feature branch is merged, and production
+    # rollouts should have exactly one source branch.
+    branches: [main]
     paths:
       # The whole of Day7/piece2, not just QuotesApi/. The test projects are
       # this workflow's gate, so a change to them changes what the gate means
