@@ -1,0 +1,29 @@
+Day 19 — idempotency, modelled against real SQLite with the migration's schema
+==============================================================================
+
+[PASS] BEFORE fix, two competing consumers: duplicate side effect survives
+        expected 2 audit row(s), got 2
+        two transactions -- the loser's audit row is committed and only its dedupe row is discarded
+
+[PASS] AFTER fix, two competing consumers: exactly one audit row
+        expected 1 audit row(s), got 1
+        one transaction -- the unique violation rolls the duplicate side effect back
+
+[PASS] BEFORE fix, crash between commits then redelivery: work repeated
+        expected 2 audit row(s), got 2
+        the side effect outlived the record that it happened, so redelivery redid it
+
+[PASS] AFTER fix, crash before commit then redelivery: work done once
+        expected 1 audit row(s), got 1
+        the uncommitted transaction is discarded whole; redelivery does the work exactly once
+
+[PASS] composite key lets one message id be processed once per subscription
+        expected 2 audit row(s), got 2
+        (MessageId, SubscriptionName) rows -- a single-column key would suppress the second
+
+==============================================================================
+All 5 scenarios behaved as the fix claims.
+
+Scope: this models the transaction boundaries, not QuotesApi itself.
+It does not prove the C# compiles or that the processor wires it this way;
+`dotnet test Day7/piece2/QuotesApi.slnx` is still the missing evidence.

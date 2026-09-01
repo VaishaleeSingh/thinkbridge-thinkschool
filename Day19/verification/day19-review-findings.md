@@ -12,9 +12,22 @@ has not been through a compiler. The first thing to do on a machine with the
 it. This is the same limitation Day 13 recorded, and it is recorded here for the
 same reason.
 
-`Day19/verification/verify-day19.py` is what could be checked mechanically —
-25 file-level assertions, all passing (`verify-day19-output.txt`). It is not a
-test suite. It cannot tell you the code compiles.
+What could be checked mechanically is checked, and captured beside this file:
+
+- `verify-day19.py` / `verify-day19-output.txt` — 25 file-level assertions,
+  all passing.
+- `idempotency-proof.py` / `idempotency-proof-output.txt` — the defect in
+  finding 1 and its fix, executed against real SQLite using the migration's
+  schema. Two competing consumers under the old two-transaction shape leave
+  **2** audit rows for one message; under the fix, **1**. A crash between the
+  old code's two commits repeats the work on redelivery; under the fix it does
+  not. Five scenarios, all behaving as claimed.
+- `day19-evidence-runbook.md` — the exact commands for the evidence that needs
+  the SDK and Docker, and where each screenshot goes.
+
+None of it is a test suite, and none of it can tell you the code compiles.
+`idempotency-proof.py` models the transaction boundaries; it does not execute
+`QuoteEventProcessorService`.
 
 ## Defects found and fixed
 
@@ -211,9 +224,11 @@ the endpoint's validation) that had nothing to do with messaging. **Restored.**
    `SaveChangesAsync` is not atomic; the plan says so, the code says so in a
    comment, and the outbox is described rather than built. Unchanged — but it
    should be stated in the submission rather than left to a reader to notice.
-5. **No manual evidence.** Every screenshot the plan asks for — the two
+5. **No manual evidence yet.** Every screenshot the plan asks for — the two
    subscriptions' counts diverging, two instances splitting the work, a DLQ with
    both reasons in it, shutdown draining in-flight handlers — requires a running
    emulator or namespace, which requires a machine with Docker and the .NET SDK.
    `Day19/verification/screenshots/` is still empty and should not be presented
-   as anything else.
+   as anything else. `day19-evidence-runbook.md` has the commands, and
+   `verification/emulator/docker-compose.yml` starts a broker that outlives a
+   test run so the DLQ can actually be photographed.
