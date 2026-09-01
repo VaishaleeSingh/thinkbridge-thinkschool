@@ -21,6 +21,210 @@ dotnet test Day7/piece2/Quotes.Tests.Integration.ServiceBus
 
 Log lines quoted below are copied verbatim from that run.
 
+## The four pieces, in code
+
+The rest of this document explains why these look the way they do. This section
+is the code itself: publisher, consumer, idempotency key handling, and the proof
+a poison message reached the dead-letter queue.
+
+### Publisher — `Messaging/ServiceBusQuoteEventPublisher.cs`
+
+```csharp
+public async Task PublishAsync(QuoteChangedEvent evt, CancellationToken ct = default)
+{
+    try
+    {
+        var message = new ServiceBusMessage(JsonSerializer.SerializeToUtf8Bytes(evt))
+        {
+            MessageId     = evt.EventId,   // deterministic, NOT Guid.NewGuid() at send
+            ContentType   = "application/json",
+            CorrelationId = Activity.Current?.TraceId.ToString(),
+            Subject       = evt.EventType
+        };
+
+        // Filters cannot read the body: only system and application properties
+        // are addressable in a SQL filter, so eventType travels as a property.
+        message.ApplicationProperties["eventType"]     = evt.EventType;
+        message.ApplicationProperties["schemaVersion"] = evt.SchemaVersion;
+
+        // Trace context as a string. Never an Activity/HttpContext/DbContext.
+        if (Activity.Current?.Id is { } traceparent)
+            message.ApplicationProperties["traceparent"] = traceparent;
+
+        await sender.SendMessageAsync(message, ct);
+    }
+    catch (Exception ex)
+    {
+        // PUBLISH/COMMIT GAP: the database write already committed, so failing
+        // the response would 500 a request that succeeded. Logged, not thrown.
+        logger.LogError(ex, "Failed to publish {EventType} for quote {QuoteId} (EventId={EventId}). "
+            + "The database write succeeded; this event is lost unless replayed from an outbox.",
+            evt.EventType, evt.QuoteId, evt.EventId);
+    }
+}
+```
+
+`EventId` is a SHA-256 over `(eventType, quoteId, occurredAt.UtcTicks)`, so a
+send retried by the SDK cannot become two ids. `ServiceBusClient` and
+`ServiceBusSender` are singletons; one sender per request tears down the AMQP
+link on every call.
+
+### Consumer — `Messaging/QuoteEventProcessorService.cs`
+
+One `BackgroundService` per subscription, each owning its processor:
+
+```csharp
+new ServiceBusProcessorOptions
+{
+    ReceiveMode                = ServiceBusReceiveMode.PeekLock, // ReceiveAndDelete kills retries and the DLQ
+    MaxConcurrentCalls         = options.MaxConcurrentCalls,     // competing consumer within one instance
+    AutoCompleteMessages       = false,                          // the decision this exercise turns on
+    MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(options.MaxAutoLockRenewalMinutes),
+    PrefetchCount              = options.PrefetchCount,
+}
+```
+
+```csharp
+private async Task OnMessageAsync(ProcessMessageEventArgs args)
+{
+    var messageId = args.Message.MessageId;
+    try
+    {
+        var evt = JsonSerializer.Deserialize<QuoteChangedEvent>(args.Message.Body.ToArray())
+                  ?? throw new JsonException("Deserialized event was null");
+
+        if (evt.SchemaVersion != QuoteChangedEvent.CurrentSchemaVersion)
+            throw new UnknownSchemaVersionException(evt.SchemaVersion);
+
+        await using var scope = scopeFactory.CreateAsyncScope();   // fresh scope per message
+        var db      = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
+        var store   = scope.ServiceProvider.GetRequiredService<IProcessedMessageStore>();
+        var handler = scope.ServiceProvider.GetRequiredKeyedService<IQuoteEventHandler>(subscriptionName);
+
+        if (await store.HasSeenAsync(messageId, subscriptionName, args.CancellationToken))
+        {
+            logger.LogInformation(
+                "Duplicate MessageId={MessageId} for Subscription={Subscription} — completing without side effect",
+                messageId, subscriptionName);
+            await args.CompleteMessageAsync(args.Message, args.CancellationToken);
+            return;
+        }
+
+        // ONE transaction: side effect and dedupe row commit together or not at all.
+        await using var tx = await db.Database.BeginTransactionAsync(args.CancellationToken);
+        try
+        {
+            await handler.HandleAsync(evt, args.CancellationToken);
+            await store.RecordAsync(messageId, subscriptionName, "Completed", args.CancellationToken);
+            await tx.CommitAsync(args.CancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            // Lost the race. Roll OUR side effect back, then complete.
+            await tx.RollbackAsync(args.CancellationToken);
+        }
+
+        await args.CompleteMessageAsync(args.Message, args.CancellationToken);
+    }
+    catch (OperationCanceledException) when (args.CancellationToken.IsCancellationRequested)
+    {
+        // Shutdown: neither complete nor abandon; let the lock expire.
+    }
+    catch (Exception ex)
+    {
+        if (MessageFailureClassifier.IsPoison(ex))
+            await args.DeadLetterMessageAsync(args.Message,
+                deadLetterReason: MessageFailureClassifier.PoisonReason(ex),
+                deadLetterErrorDescription: MessageFailureClassifier.PoisonDescription(ex),
+                args.CancellationToken);
+        else
+            await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken);
+    }
+}
+```
+
+### Idempotency key handling
+
+The key, in `Data/QuotesDbContext.cs`:
+
+```csharp
+entity.HasKey(x => new { x.MessageId, x.SubscriptionName });
+```
+
+Composite on purpose: both subscriptions receive the same `MessageId` from one
+publish and they are different work. A single-column key would let the audit
+row suppress the search-index handler.
+
+The store deliberately does not catch — the caller owns the transaction, so only
+the caller can decide what a violation means:
+
+```csharp
+public async Task RecordAsync(string messageId, string subscriptionName, string outcome, CancellationToken ct = default)
+{
+    db.ProcessedMessages.Add(new ProcessedMessage
+    {
+        MessageId        = messageId,
+        SubscriptionName = subscriptionName,
+        ProcessedAtUtc   = DateTime.UtcNow,
+        Outcome          = outcome
+    });
+
+    await db.SaveChangesAsync(ct);
+}
+```
+
+`HasSeenAsync` is a cheap pre-screen, not the guarantee: under
+`MaxConcurrentCalls > 1` two consumers can both read "not seen". The primary key
+decides it, and the violation is matched on the provider's error code rather
+than on exception text — message strings are localised, and a substring search
+for "2627" matches any message containing those four digits:
+
+```csharp
+private static bool IsUniqueConstraintViolation(DbUpdateException ex) => ex.InnerException switch
+{
+    Microsoft.Data.Sqlite.SqliteException sqlite => sqlite.SqliteErrorCode == 19,
+    Microsoft.Data.SqlClient.SqlException sql    => sql.Number is 2627 or 2601,
+    _ => false
+};
+```
+
+### Poison message in the DLQ
+
+The classification rule is one testable function, not an inline `catch`:
+
+```csharp
+public static bool IsPoison(Exception exception) => exception switch
+{
+    JsonException                  => true,   // will never parse
+    UnknownSchemaVersionException  => true,   // shape we do not know
+    FormatException                => true,
+    DbUpdateConcurrencyException   => false,  // transient, retry
+    DbUpdateException              => false,
+    OperationCanceledException     => false,  // shutdown, not a bad message
+    _                              => false   // unknown: let MaxDeliveryCount decide
+};
+```
+
+Read back off the dead-letter queue, in
+`Quotes.Tests.Integration.ServiceBus/EmulatorIntegrationTests.cs`:
+
+```csharp
+await using var dlqReceiver = client.CreateReceiver(
+    "quote-events", "audit",
+    new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
+
+dead!.DeadLetterReason.Should().Be("InvalidPayload");
+dead.DeliveryCount.Should().Be(1);
+```
+
+And the run itself, a non-JSON body settled on the first delivery:
+
+```text
+[13:23:53 INF] Processing MessageId=poison-a92908863cf64caf9fff819e2df46e32 DeliveryCount=1 Subscription=audit
+[13:23:53 WRN] Poison message detected MessageId=poison-a92908863cf64caf9fff819e2df46e32 Reason=InvalidPayload. Dead-lettering immediately.
+System.Text.Json.JsonException: 't' is an invalid start of a property name.
+```
+
 ## Why the implementation lives in Day 7
 
 The maintained backend is `Day7/piece2/QuotesApi`; Days 11, 12 and 18 added
