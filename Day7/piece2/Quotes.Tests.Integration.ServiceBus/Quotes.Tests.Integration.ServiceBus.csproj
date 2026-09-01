@@ -29,7 +29,11 @@
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="FluentAssertions" Version="7.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.10" />
+    <!-- The suite points the host at a throwaway SQLite file, so it names
+         the provider explicitly rather than relying on it arriving
+         transitively through QuotesApi, the same way the SqlServer suite
+         names its own provider. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <!-- Service Bus emulator requires SQL Server as backing store.
          Testcontainers.MsSql spins one up alongside the emulator container. -->
