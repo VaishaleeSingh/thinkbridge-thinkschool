@@ -208,7 +208,36 @@ check(
     ", ".join(unread) or "MaxDeliveryCount belongs to the subscription, not the app",
 )
 
-# --- 11. XML comments are well-formed -----------------------------------
+# --- 11. Braces balance in every file this branch touches ---------------
+# CS1513 is what an edit that inserts a method in the wrong place produces,
+# and it is cheap to catch here: strip comments and string literals, then
+# count. Not a parser, but it would have caught the one that got through.
+def brace_delta(text):
+    text = re.sub(r"//[^\n]*", "", text)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', text)
+    text = re.sub(r"'(?:[^'\\\n]|\\.)*'", "''", text)
+    return text.count("{") - text.count("}")
+
+
+unbalanced = []
+for dirpath, dirnames, filenames in os.walk(API):
+    dirnames[:] = [d for d in dirnames if d not in ("bin", "obj", ".git")]
+    for filename in filenames:
+        if not filename.endswith(".cs"):
+            continue
+        path = os.path.join(dirpath, filename)
+        with io.open(path, encoding="utf-8-sig") as fh:
+            if brace_delta(fh.read()):
+                unbalanced.append(os.path.relpath(path, ROOT))
+
+check(
+    "braces balance in every C# file",
+    not unbalanced,
+    ", ".join(unbalanced) or "catches the CS1513 an ill-placed insert produces",
+)
+
+# --- 12. XML comments are well-formed -----------------------------------
 # MSBuild refuses to load a project whose comment contains "--" (MSB4025),
 # and it fails at RESTORE, before any code is compiled -- so one stray
 # double hyphen in a comment looks like a broken build, not a typo.

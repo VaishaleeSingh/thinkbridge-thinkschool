@@ -26,6 +26,7 @@
 [PASS] one worker registered per subscription, both from configuration               (a handler registered but never consumed is unreachable production code)
 [PASS] handlers are keyed by the configured subscription names, not literals      
 [PASS] every ServiceBus option is read by something                                  (MaxDeliveryCount belongs to the subscription, not the app)
+[PASS] braces balance in every C# file                                               (catches the CS1513 an ill-placed insert produces)
 [PASS] no double hyphen inside an XML comment in any project file                    (MSB4025 fails restore before it compiles anything)
 
-29/29 checks passed
+30/30 checks passed

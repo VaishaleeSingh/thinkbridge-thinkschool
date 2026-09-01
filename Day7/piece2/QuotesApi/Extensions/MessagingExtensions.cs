@@ -104,7 +104,8 @@ public static class MessagingExtensions
             CreateWorker(sp, opts.TopicName!, opts.SearchIndexSubscription!));
 
         return services;
-    
+    }
+
     /// <summary>
     /// Builds one worker for one subscription: its processor, with the
     /// settings the whole exercise turns on, and the subscription name it
@@ -158,5 +159,4 @@ public static class MessagingExtensions
             sp.GetRequiredService<IOptions<ServiceBusOptions>>(),
             sp.GetRequiredService<ILogger<QuoteEventProcessorService>>());
     }
-}
 }
