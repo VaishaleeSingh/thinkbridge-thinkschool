@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using QuotesApi.Authorization;
+using QuotesApi.Messaging;
 using QuotesApi.Models;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
@@ -90,6 +91,8 @@ public static class QuoteEndpointExtensions
             CreateQuoteRequest request,
             IQuoteRepository repository,
             IQuoteTextNormalizer normalizer,
+            IQuoteEventPublisher publisher,
+            IClock clock,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
@@ -146,6 +149,19 @@ public static class QuoteEndpointExtensions
                 quote,
                 cancellationToken);
 
+            // Publish AFTER commit. Not atomic with the database write:
+            // a crash here loses the event. See submission notes for why
+            // the transactional outbox is the correct fix.
+            //
+            // CancellationToken.None deliberately, NOT the request token:
+            // the write has already committed, so a client that disconnects
+            // (or a browser that cancels the request) must not also cancel
+            // the publish and silently drop an event describing a change
+            // that is durably in the database.
+            var evt = QuoteChangedEvent.Created(
+                created.Id, callerId, created.Author, created.Text, clock.UtcNow);
+            await publisher.PublishAsync(evt, CancellationToken.None);
+
             return Results.Created(
                 $"/api/quotes/{created.Id}",
                 created);
@@ -174,6 +190,8 @@ public static class QuoteEndpointExtensions
             UpdateQuoteRequest request,
             IQuoteRepository repository,
             IQuoteTextNormalizer normalizer,
+            IQuoteEventPublisher publisher,
+            IClock clock,
             IAuthorizationService authorizationService,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
@@ -231,9 +249,19 @@ public static class QuoteEndpointExtensions
                 normalizedBackground,
                 cancellationToken);
 
-            return updated is null
-                ? Results.NotFound()
-                : Results.Ok(updated);
+            if (updated is null)
+                return Results.NotFound();
+
+            var callerId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? user.FindFirst("sub")?.Value;
+            // CancellationToken.None: see the POST handler above -- the
+            // write is committed, the publish must not be cancelled with the
+            // request.
+            var evt = QuoteChangedEvent.Updated(
+                updated.Id, callerId, updated.Author, updated.Text, clock.UtcNow);
+            await publisher.PublishAsync(evt, CancellationToken.None);
+
+            return Results.Ok(updated);
         }).RequireAuthorization("can-edit-quotes");
 
         // DELETE /api/quotes/{id} — remove a quote.
@@ -251,6 +279,8 @@ public static class QuoteEndpointExtensions
         group.MapDelete("/{id:int}", async (
             int id,
             IQuoteRepository repository,
+            IQuoteEventPublisher publisher,
+            IClock clock,
             IAuthorizationService authorizationService,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
@@ -270,9 +300,16 @@ public static class QuoteEndpointExtensions
                 id,
                 cancellationToken);
 
-            return deleted
-                ? Results.NoContent()
-                : Results.NotFound();
+            if (!deleted)
+                return Results.NotFound();
+
+            var callerId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? user.FindFirst("sub")?.Value;
+            // CancellationToken.None: see the POST handler above.
+            var evt = QuoteChangedEvent.Deleted(id, callerId, clock.UtcNow);
+            await publisher.PublishAsync(evt, CancellationToken.None);
+
+            return Results.NoContent();
         }).RequireAuthorization("can-delete-quotes");
 
         return app;

@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- These tests require Docker (Service Bus emulator + SQL Server), the
+         same as Quotes.Tests.Integration.SqlServer, and like that suite this
+         project IS in QuotesApi.slnx. A test project outside the solution is
+         never compiled by CI or by a solution-level test run, so it rots
+         silently -- which is a worse failure than an honest red test on a
+         machine with no Docker daemon.
+
+         Run this suite alone with:
+           dotnet test Quotes.Tests.Integration.ServiceBus
+         Skip it in a solution-level run with:
+           dotnet test QuotesApi.slnx --filter "FullyQualifiedName!~ServiceBus"
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.10" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!-- Service Bus emulator requires SQL Server as backing store.
+         Testcontainers.MsSql spins one up alongside the emulator container. -->
+    <PackageReference Include="Testcontainers.MsSql" Version="4.1.0" />
+    <!-- Testcontainers.ServiceBus does not yet have first-class emulator
+         support as of writing; we use the raw Testcontainers API to manage
+         the emulator container alongside SQL Server. -->
+    <PackageReference Include="Testcontainers" Version="4.1.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\QuotesApi\QuotesApi.csproj" />
+  </ItemGroup>
+
+  <!-- Copy the emulator config to the test output directory so the fixture
+       can mount it into the container without hard-coding an absolute path. -->
+  <ItemGroup>
+    <None Update="emulator-config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

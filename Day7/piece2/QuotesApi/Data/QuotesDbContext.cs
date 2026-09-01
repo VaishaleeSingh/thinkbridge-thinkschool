@@ -21,6 +21,11 @@ public class QuotesDbContext : DbContext
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+    // Day 19 -- Service Bus messaging tables
+    public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
+    public DbSet<QuoteAuditEntry> QuoteAuditEntries => Set<QuoteAuditEntry>();
+    public DbSet<QuoteSearchProjection> QuoteSearchProjections => Set<QuoteSearchProjection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -147,6 +152,63 @@ public class QuotesDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Day 19 -- ProcessedMessages: composite PK is the idempotency
+        // guarantee under competing consumers. Index on ProcessedAtUtc
+        // supports the cleanup/retention query.
+        modelBuilder.Entity<ProcessedMessage>(entity =>
+        {
+            entity.HasKey(x => new { x.MessageId, x.SubscriptionName });
+
+            entity.Property(x => x.MessageId)
+                .IsRequired()
+                .HasMaxLength(128);
+
+            entity.Property(x => x.SubscriptionName)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(x => x.Outcome)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.HasIndex(x => x.ProcessedAtUtc);
+        });
+
+        modelBuilder.Entity<QuoteAuditEntry>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.EventId)
+                .IsRequired()
+                .HasMaxLength(128);
+
+            entity.Property(x => x.EventType)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.HasIndex(x => x.QuoteId);
+            entity.HasIndex(x => x.RecordedAtUtc);
+        });
+
+        modelBuilder.Entity<QuoteSearchProjection>(entity =>
+        {
+            entity.HasKey(x => x.QuoteId);
+
+            // NOT database-generated. QuoteId arrives in the event; the
+            // projection is keyed by the quote it describes. Left to EF's
+            // convention an int key becomes IDENTITY on SQL Server, and the
+            // first upsert fails with "Cannot insert explicit value for
+            // identity column" -- on SQL Server only, so SQLite locally would
+            // have hidden it until deployment.
+            entity.Property(x => x.QuoteId).ValueGeneratedNever();
+
+            entity.Property(x => x.Author)
+                .HasMaxLength(200);
+
+            entity.Property(x => x.Text)
+                .HasMaxLength(1000);
         });
     }
 }

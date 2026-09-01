@@ -92,6 +92,8 @@
   <ItemGroup>
     <!-- Day 12: Dapper, for the hot read path only. EF Core stays the default
          for everything else; see Day12/docs for the rule this repo follows. -->
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
+    <PackageReference Include="Microsoft.Extensions.Azure" Version="1.10.0" />
     <PackageReference Include="Dapper" Version="2.1.35" />
     <PackageReference Include="Azure.Extensions.AspNetCore.Configuration.Secrets" Version="1.5.1" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />

@@ -1,0 +1,27 @@
+[PASS] processor opens one transaction around handler + dedupe row                   (order: begin -> handle -> record -> commit)
+[PASS] duplicate race rolls the side effect back                                  
+[PASS] unique-violation detection uses provider error codes, not message text     
+[PASS] worker stops the processor without disposing a DI-owned singleton          
+[PASS] explicit settlement on every path                                          
+[PASS] QuoteSearchProjection.QuoteId is ValueGeneratedNever                          (otherwise SQL Server makes it IDENTITY and the first upsert fails)
+[PASS] migration does not mark the projection key autoincrement                   
+[PASS] QuotesDbContextModelSnapshot.cs agrees with the model                      
+[PASS] 20260901050401_AddMessagingTables.Designer.cs agrees with the model        
+[PASS] ProcessedMessages primary key is (MessageId, SubscriptionName)             
+[PASS] post-commit publish does not ride the request cancellation token           
+[PASS] MessageId is the deterministic event id                                    
+[PASS] eventType travels as an application property (filters cannot read the body)
+[PASS] trace context travels as a string                                          
+[PASS] no Service Bus connection string in configuration                          
+[PASS] emulator namespace is the non-renameable 'sbemulatorns'                    
+[PASS] emulator config declares a Logging section                                 
+[PASS] search-index rule uses the emulator's Sql/SqlFilter schema                 
+[PASS] search-index filter excludes deletes                                       
+[PASS] both containers share a Docker network and SQL is addressed by alias       
+[PASS] tests do not request AMQP WebSockets (unsupported by the emulator)         
+[PASS] round-trip test asserts on the subscription the app actually consumes      
+[PASS] emulator host sets FullyQualifiedNamespace so ValidateOnStart passes       
+[PASS] Service Bus test project is in the solution                                   (a project outside the solution is never built by CI)
+[PASS] ServiceBus is off unless configured ("Enabled": false)                     
+
+25/25 checks passed
