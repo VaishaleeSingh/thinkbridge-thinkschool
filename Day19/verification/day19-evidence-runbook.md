@@ -17,6 +17,15 @@ available where this branch was reviewed, and no package feed was reachable to
 install one. `idempotency-proof.py` models the transaction boundaries; it does
 not execute `QuoteEventProcessorService`.
 
+## Captured on 1 September 2026
+
+Steps 0 to 3 are done: the SQL Server migration set was regenerated, the
+solution builds, `dotnet test Day7/piece2/QuotesApi.slnx` is **198/198**, and
+the emulator suite is **5/5**. `emulator-run-evidence.md` quotes the run, line
+by line, for fan-out, the subscription filter, idempotency and the poison
+dead-letter. Step 4 (the manual screenshots) and the processor unit tests in
+step 5 are still open.
+
 ## Still to capture — needs the SDK and Docker
 
 Run these on your own machine, from the repository root, on this branch.

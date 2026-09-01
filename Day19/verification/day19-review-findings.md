@@ -3,7 +3,14 @@
 Reviewed against `Day19/docs/day19-service-bus-topics-dlq-implementation-plan.md`
 on 1 September 2026, on branch `day19-service-bus-topics-dlq`.
 
-**Read this first: nothing here was compiled or executed.** No .NET SDK exists
+**Status, 1 September 13:23 — everything below has now been compiled and run.**
+`dotnet test Day7/piece2/QuotesApi.slnx` is 198/198 and the emulator suite is
+5/5; `Day19/verification/emulator-run-evidence.md` quotes the run. The paragraph
+that follows was written before a toolchain was available and is kept because it
+is what the review was worth at the time: the fixes below were reasoning, not
+observation, until that run.
+
+**As written, nothing here had been compiled or executed.** No .NET SDK exists
 on the machine this review ran on, and the container it ran from has no network
 route to install one. Every finding below is from reading the code and checking
 it against Microsoft's current documentation; every fix is a source change that
