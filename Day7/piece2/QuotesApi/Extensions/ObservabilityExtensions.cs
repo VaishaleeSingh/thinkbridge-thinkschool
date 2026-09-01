@@ -51,7 +51,11 @@ public static class ObservabilityExtensions
             // they are always ours to register.
             tracing
                 .AddEntityFrameworkCoreInstrumentation()
-                .AddSource(QuotesActivitySource.Name);
+                .AddSource(QuotesActivitySource.Name)
+                // Day 19: Service Bus SDK emits producer and consumer spans.
+                // These link when traceparent travels as a message property,
+                // making the consumer span a child of the request that published.
+                .AddSource("Azure.Messaging.ServiceBus");
 
             // ...whereas these two ARE part of the distro. Registering them
             // here as well when Azure Monitor is active would instrument the

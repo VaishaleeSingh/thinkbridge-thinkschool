@@ -44,6 +44,31 @@ namespace QuotesApi.Migrations.SqlServer.Migrations
                     b.ToTable("Collections");
                 });
 
+            modelBuilder.Entity("QuotesApi.Models.ProcessedMessage", b =>
+                {
+                    b.Property<string>("MessageId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("SubscriptionName")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("ProcessedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("MessageId", "SubscriptionName");
+
+                    b.HasIndex("ProcessedAtUtc");
+
+                    b.ToTable("ProcessedMessages");
+                });
+
             modelBuilder.Entity("QuotesApi.Models.Quote", b =>
                 {
                     b.Property<int>("Id")
@@ -54,7 +79,12 @@ namespace QuotesApi.Migrations.SqlServer.Migrations
 
                     b.Property<string>("Author")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("BackgroundImageUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("CreatedByUserId")
                         .HasColumnType("nvarchar(max)");
@@ -65,7 +95,69 @@ namespace QuotesApi.Migrations.SqlServer.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Author");
+
                     b.ToTable("Quotes");
+                });
+
+            modelBuilder.Entity("QuotesApi.Models.QuoteAuditEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("EventId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("OwnerId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("QuoteId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RecordedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QuoteId");
+
+                    b.HasIndex("RecordedAtUtc");
+
+                    b.ToTable("QuoteAuditEntries");
+                });
+
+            modelBuilder.Entity("QuotesApi.Models.QuoteSearchProjection", b =>
+                {
+                    b.Property<int>("QuoteId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Author")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset>("LastUpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Text")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("QuoteId");
+
+                    b.ToTable("QuoteSearchProjections");
                 });
 
             modelBuilder.Entity("QuotesApi.Models.RefreshToken", b =>

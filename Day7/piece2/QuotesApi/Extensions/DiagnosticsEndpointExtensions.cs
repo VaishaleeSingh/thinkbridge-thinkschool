@@ -464,6 +464,100 @@ public static class DiagnosticsEndpointExtensions
             });
         });
 
+        // ------------------------------------------------------------------
+        // Day 19 -- Dead-letter peek  (Development-gated)
+        // ------------------------------------------------------------------
+        // A health-check for the "audit" subscription's DLQ. Returns the
+        // first N dead-lettered messages' metadata — id, reason, description,
+        // enqueuedAt — WITHOUT the body, which may contain user content.
+        //
+        // The real operational answer is an Azure Monitor alert on
+        // DeadletteredMessages > 0 for the subscription. This endpoint is the
+        // Development-time equivalent: a quick "what is in the DLQ?" without
+        // opening the portal. It should not exist in production and does not,
+        // because MapDiagnosticsEndpoints returns early unless IsDevelopment()
+        // or Diagnostics:Enabled is true.
+        //
+        // Replay path (described, not built): receive from the DLQ, fix or
+        // re-publish to the topic, complete the dead-lettered copy. Replay
+        // re-enters the idempotent handler — which is exactly why the
+        // ProcessedMessages retention window must exceed the DLQ dwell time.
+        group.MapGet("/quote-events/dead-letters", async (
+            int? maxMessages,
+            IConfiguration config,
+            IServiceProvider services,
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken) =>
+        {
+            var sbEnabled = config.GetValue<bool>("ServiceBus:Enabled");
+            if (!sbEnabled)
+                return Results.Ok(new { note = "ServiceBus is disabled (ServiceBus:Enabled=false). No DLQ to peek." });
+
+            var ns = config["ServiceBus:FullyQualifiedNamespace"];
+            var topic = config["ServiceBus:TopicName"] ?? "quote-events";
+            var sub = config["ServiceBus:AuditSubscription"] ?? "audit";
+
+            if (string.IsNullOrWhiteSpace(ns))
+                return Results.Problem("ServiceBus:FullyQualifiedNamespace is not configured.");
+
+            var max = Math.Min(maxMessages ?? 10, 50); // Safety cap
+
+            try
+            {
+                // Reuse the singleton client registered in MessagingExtensions
+                // rather than opening a second AMQP connection per request --
+                // one connection per call is the classic Service Bus
+                // performance bug, and a diagnostics route is no exception.
+                var client = services.GetService<Azure.Messaging.ServiceBus.ServiceBusClient>();
+                if (client is null)
+                    return Results.Problem("Service Bus client is not registered.");
+
+                var entityPath = $"{topic}/Subscriptions/{sub}";
+                await using var receiver = client.CreateReceiver(topic, sub,
+                    new Azure.Messaging.ServiceBus.ServiceBusReceiverOptions
+                    {
+                        SubQueue = Azure.Messaging.ServiceBus.SubQueue.DeadLetter,
+                        ReceiveMode = Azure.Messaging.ServiceBus.ServiceBusReceiveMode.PeekLock
+                    });
+
+                var messages = await receiver.PeekMessagesAsync(max, cancellationToken: cancellationToken);
+
+                var result = messages.Select(m => new
+                {
+                    MessageId = m.MessageId,
+                    EnqueuedAt = m.EnqueuedTime,
+                    DeadLetterReason = m.DeadLetterReason,
+                    DeadLetterErrorDescription = m.DeadLetterErrorDescription,
+                    DeliveryCount = m.DeliveryCount,
+                    EventType = m.ApplicationProperties.TryGetValue("eventType", out var et) ? et : null,
+                    SchemaVersion = m.ApplicationProperties.TryGetValue("schemaVersion", out var sv) ? sv : null,
+                    // Body deliberately omitted: may contain user content.
+                });
+
+                return Results.Ok(new
+                {
+                    subscription = $"{entityPath}/$DeadLetterQueue",
+                    count = messages.Count,
+                    messages = result
+                });
+            }
+            catch (Exception ex)
+            {
+                // Log the detail, return none of it. The repository's rule
+                // since Day 18 is that exception text never crosses an HTTP
+                // boundary -- a broker exception can carry entity paths,
+                // namespace names and token-acquisition detail.
+                loggerFactory
+                    .CreateLogger("QuotesApi.Diagnostics.DeadLetters")
+                    .LogError(ex, "Failed to peek the dead-letter queue for {Topic}/{Subscription}", topic, sub);
+
+                return Results.Problem(
+                    title: "Could not read the dead-letter queue.",
+                    detail: "See the application logs for the failure detail.",
+                    statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
         return app;
     }
 

@@ -1,0 +1,61 @@
+{
+  "UserConfig": {
+    "Namespaces": [
+      {
+        "Name": "sbemulatorns",
+        "Topics": [
+          {
+            "Name": "quote-events",
+            "Properties": {
+              "DefaultMessageTimeToLive": "PT1H",
+              "RequiresDuplicateDetection": false
+            },
+            "Subscriptions": [
+              {
+                "Name": "audit",
+                "Properties": {
+                  "MaxDeliveryCount": 3,
+                  "LockDuration": "PT1M",
+                  "DefaultMessageTimeToLive": "PT1H",
+                  "DeadLetteringOnMessageExpiration": true
+                },
+                "Rules": [
+                  {
+                    "Name": "$Default",
+                    "Properties": {
+                      "FilterType": "Sql",
+                      "SqlFilter": { "SqlExpression": "1=1" }
+                    }
+                  }
+                ]
+              },
+              {
+                "Name": "search-index",
+                "Properties": {
+                  "MaxDeliveryCount": 3,
+                  "LockDuration": "PT1M",
+                  "DefaultMessageTimeToLive": "PT1H",
+                  "DeadLetteringOnMessageExpiration": true
+                },
+                "Rules": [
+                  {
+                    "Name": "content-changes-only",
+                    "Properties": {
+                      "FilterType": "Sql",
+                      "SqlFilter": {
+                        "SqlExpression": "eventType IN ('QuoteCreated','QuoteUpdated')"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "Logging": {
+      "Type": "File"
+    }
+  }
+}

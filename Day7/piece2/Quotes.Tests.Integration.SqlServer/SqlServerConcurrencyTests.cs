@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using QuotesApi.Data;
 using QuotesApi.Extensions;
@@ -84,6 +85,21 @@ public class SqlServerConcurrencyTests : IAsyncLifetime
     {
         var token = await CreateAuthenticatedUserAsync();
 
+        // A REAL quote id, from the seed. The test used to race on QuoteId 99,
+        // which no quote has. That worked against the old read shape, which
+        // returned the raw item rows, but Day 12's CollectionDetail builds its
+        // list by joining CollectionItem to Quotes -- an inner join. An item
+        // pointing at a quote that does not exist is therefore invisible in
+        // the response, and the assertion below counted zero however the race
+        // actually went. The race is between two inserts of the same composite
+        // key; nothing about it needs the quote id to be fictional.
+        int quoteId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
+            quoteId = await db.Quotes.Select(q => q.Id).FirstAsync();
+        }
+
         var createRequest = AuthedRequest(HttpMethod.Post, "/api/collections", token);
         createRequest.Content = JsonContent.Create(new CreateCollectionRequest("Race Condition Check"));
         var createResponse = await _client.SendAsync(createRequest);
@@ -92,7 +108,7 @@ public class SqlServerConcurrencyTests : IAsyncLifetime
         HttpRequestMessage AddItemRequest() => new HttpRequestMessage(HttpMethod.Post, $"{location}/items")
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", token) },
-            Content = JsonContent.Create(new AddCollectionItemRequest(QuoteId: 99))
+            Content = JsonContent.Create(new AddCollectionItemRequest(QuoteId: quoteId))
         };
 
         // Fire both requests together rather than one after the other --
@@ -109,8 +125,15 @@ public class SqlServerConcurrencyTests : IAsyncLifetime
 
         var getResponse = await _client.SendAsync(AuthedRequest(HttpMethod.Get, location, token));
         var finalState = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var matchingItems = finalState.GetProperty("items").EnumerateArray()
-            .Count(i => i.GetProperty("quoteId").GetInt32() == 99);
+        // "quotes", not "items": Day 12 replaced the collection's read shape
+        // with CollectionDetail, whose list is named Quotes. This test was
+        // written against the pre-Day-12 shape and asked for a property that
+        // has not existed since, failing with a bare KeyNotFoundException that
+        // named neither the rename nor the race it is supposed to be testing.
+        // It went unnoticed because CI builds Day5/piece2, so this suite has
+        // not run anywhere since.
+        var matchingItems = finalState.GetProperty("quotes").EnumerateArray()
+            .Count(i => i.GetProperty("quoteId").GetInt32() == quoteId);
 
         matchingItems.Should().Be(1, "the composite primary key on (CollectionId, QuoteId) should let exactly one insert win, not zero and not two");
     }

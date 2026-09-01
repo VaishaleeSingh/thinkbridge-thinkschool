@@ -331,6 +331,10 @@ public static class InfrastructureExtensions
         // the quote DELETE endpoint.
         services.AddSingleton<IAuthorizationHandler, MustOwnQuoteHandler>();
 
+        // Day 19 -- Service Bus topic publisher + competing-consumer worker.
+        // Enabled:false by default so unrelated tests never attempt AMQP.
+        services.AddMessaging(configuration);
+
         return services;
     }
 }
