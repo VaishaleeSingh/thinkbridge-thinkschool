@@ -13,22 +13,23 @@ namespace Quotes.Tests.Integration.ServiceBus;
 /// <summary>
 /// End-to-end tests against the Service Bus emulator.
 ///
-/// What each test actually proves, and why the assertions are where they are:
+/// What each test proves, and why the assertions sit where they do:
 ///
-/// - The application's worker consumes the AUDIT subscription only. So the
-///   round-trip test asserts on QuoteAuditEntries. Asserting on
-///   QuoteSearchProjections would never pass: nothing in the running app
-///   consumes search-index, and a test that can never pass is worse than no
-///   test, because it reads like coverage.
+/// - The app runs one worker per subscription, so both are consumed in-process.
+///   The round-trip test asserts on QuoteAuditEntries, the audit handler's own
+///   side effect.
 ///
-/// - Fan-out is therefore proved directly at the broker: publish a Created and
-///   a Deleted, then receive from the search-index subscription and assert the
-///   Deleted never arrives. That is the subscription filter doing its job, and
-///   it fails loudly if the $Default TrueFilter is ever left in place.
+/// - Fan-out and filtering are asserted through ProcessedMessages, whose
+///   composite key records one row per (message, subscription). That makes
+///   "search-index never saw the delete" a direct database fact rather than an
+///   inference from a receiver that would now be competing with the app's own
+///   consumer for the same messages.
 ///
 /// - Idempotency is proved by sending the SAME MessageId twice and asserting
 ///   one audit row.
-/// </summary>
+///
+/// - Dead-lettering is proved on the first delivery, which is what separates
+///   the poison route from the MaxDeliveryCount route.
 [Collection("ServiceBusEmulator")]
 public class EmulatorIntegrationTests : IAsyncDisposable
 {
@@ -182,8 +183,14 @@ public class EmulatorIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Search_index_subscription_filters_out_delete_events()
+    public async Task Search_index_subscription_never_sees_a_delete()
     {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
+            await db.Database.MigrateAsync();
+        }
+
         var created = QuoteChangedEvent.Created(
             2001, "test-user", "Filtered", "Created reaches search-index", DateTimeOffset.UtcNow);
         var deleted = QuoteChangedEvent.Deleted(2001, "test-user", DateTimeOffset.UtcNow);
@@ -194,23 +201,70 @@ public class EmulatorIntegrationTests : IAsyncDisposable
         await sender.SendMessageAsync(BuildMessage(created));
         await sender.SendMessageAsync(BuildMessage(deleted));
 
-        // Nothing in the app consumes search-index, so receive from it directly.
-        await using var receiver = client.CreateReceiver("quote-events", "search-index");
+        // Both workers are running in this host. Wait for the audit worker to
+        // record the DELETE, which is the later of the two events on the
+        // subscription that sees everything -- by then search-index has had at
+        // least as long to receive it, so its absence below is a filter
+        // decision rather than a race with the assertion.
+        var auditSawDelete = await WaitUntilAsync(
+            () => WithDbAsync(db => db.ProcessedMessages.AnyAsync(
+                m => m.MessageId == deleted.EventId && m.SubscriptionName == "audit")),
+            TimeSpan.FromSeconds(30));
 
-        var received = await receiver.ReceiveMessagesAsync(
-            maxMessages: 5, maxWaitTime: TimeSpan.FromSeconds(10));
+        auditSawDelete.Should().BeTrue("audit takes every event type");
 
-        var eventTypes = received
-            .Select(m => m.ApplicationProperties.TryGetValue("eventType", out var v) ? v as string : null)
-            .ToList();
+        await WaitUntilAsync(
+            () => WithDbAsync(db => db.ProcessedMessages.AnyAsync(
+                m => m.MessageId == created.EventId && m.SubscriptionName == "search-index")),
+            TimeSpan.FromSeconds(30));
 
-        eventTypes.Should().Contain("QuoteCreated");
-        eventTypes.Should().NotContain(
-            "QuoteDeleted",
+        var searchIndexSawCreate = await WithDbAsync(db => db.ProcessedMessages.AnyAsync(
+            m => m.MessageId == created.EventId && m.SubscriptionName == "search-index"));
+        var searchIndexSawDelete = await WithDbAsync(db => db.ProcessedMessages.AnyAsync(
+            m => m.MessageId == deleted.EventId && m.SubscriptionName == "search-index"));
+
+        searchIndexSawCreate.Should().BeTrue();
+        searchIndexSawDelete.Should().BeFalse(
             "the search-index SQL filter excludes deletes -- if this fails, the $Default TrueFilter is still in place");
 
-        foreach (var message in received)
-            await receiver.CompleteMessageAsync(message);
+        // And the side effect the filtered stream exists for.
+        var projection = await WithDbAsync(db =>
+            db.QuoteSearchProjections.FirstOrDefaultAsync(p => p.QuoteId == 2001));
+
+        projection.Should().NotBeNull();
+        projection!.Author.Should().Be("Filtered");
+    }
+
+    [Fact]
+    public async Task One_event_is_processed_once_per_subscription()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
+            await db.Database.MigrateAsync();
+        }
+
+        // The same MessageId reaches both subscriptions from one publish. The
+        // composite key on ProcessedMessages is what keeps them independent:
+        // a single-column key would let whichever worker got there first
+        // suppress the other's work entirely.
+        var evt = QuoteChangedEvent.Created(
+            3001, "test-user", "Fan out", "One publish, two subscriptions", DateTimeOffset.UtcNow);
+
+        var publisher = _factory.Services.GetRequiredService<IQuoteEventPublisher>();
+        await publisher.PublishAsync(evt, CancellationToken.None);
+
+        var both = await WaitUntilAsync(
+            () => WithDbAsync(async db =>
+                await db.ProcessedMessages.CountAsync(m => m.MessageId == evt.EventId) == 2),
+            TimeSpan.FromSeconds(30));
+
+        both.Should().BeTrue("one publish is processed once by audit and once by search-index");
+
+        var auditRows = await WithDbAsync(db =>
+            db.QuoteAuditEntries.CountAsync(a => a.EventId == evt.EventId));
+
+        auditRows.Should().Be(1);
     }
 
     [Fact]

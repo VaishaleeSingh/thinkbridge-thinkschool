@@ -243,6 +243,47 @@ The maintained backend has been `Day7/piece2` since Day 11. Nothing in Days 11,
 run anywhere in weeks. Pointing CI at Day 7 is the change that stops this
 recurring — flagged rather than made, since it affects the whole repository.
 
+## Second pass — three things that were narrated rather than true
+
+### 15. The search-index handler was unreachable production code
+
+`SearchIndexQuoteEventHandler` was registered as a keyed service, but the app
+ran exactly one worker, on `audit`. Nothing ever resolved the `search-index`
+key, so the handler could not execute in production; the only thing touching
+that subscription was a test receiving from it directly. A comment explained
+this as deliberate, which made it a decision on paper and dead code in fact.
+
+**Fixed:** the worker now takes its subscription name as a constructor argument
+and is registered once per subscription, each instance owning its own
+`ServiceBusProcessor`. Both subscriptions are consumed in-process, which is
+what the topic was for. Handlers are keyed by the *configured* names rather
+than string literals, so renaming a subscription cannot leave the lookup
+pointing at nothing. `IQuoteEventHandler.SubscriptionName` is gone with it — the
+keyed registration is now the single place that association lives.
+
+Because the app consumes `search-index` itself, the emulator test that received
+from that subscription directly would now be competing with it for the same
+messages. Filtering is asserted through `ProcessedMessages` instead — one row
+per (message, subscription) — so "search-index never saw the delete" is a
+database fact rather than an inference. A new test asserts the composite key's
+whole point: one publish, two rows, one per subscription.
+
+### 16. A setting that read like a knob and turned nothing
+
+`ServiceBusOptions.MaxDeliveryCount` was never read by any code. It is a
+property of the *subscription*, set in the Bicep, and only the broker acts on
+it — so changing the app setting looked meaningful and did nothing. **Removed**
+from the options and from `appsettings.json`, with a comment where it was
+saying where the real value lives. `verify-day19.py` now fails if any
+`ServiceBus` option goes unread.
+
+### 17. Two copies of the emulator topology
+
+`Day19/verification/emulator/config.json` was a copy of the test project's
+`emulator-config.json`. **Fixed:** the compose file mounts the test project's
+file by relative path and the copy is deleted. One topology, one file — a copy
+drifts, and the copy that drifts is always the one nobody runs.
+
 ## Open gaps — not fixed, and why
 
 1. **No unit tests for the processor.** The plan asked for the decision logic to

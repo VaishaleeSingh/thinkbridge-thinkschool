@@ -22,8 +22,6 @@ public sealed class AuditQuoteEventHandler(
     QuotesDbContext db,
     ILogger<AuditQuoteEventHandler> logger) : IQuoteEventHandler
 {
-    public string SubscriptionName => "audit";
-
     public async Task HandleAsync(QuoteChangedEvent evt, CancellationToken cancellationToken = default)
     {
         var entry = new QuoteAuditEntry

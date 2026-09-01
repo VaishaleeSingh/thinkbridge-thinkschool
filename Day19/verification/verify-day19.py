@@ -50,9 +50,14 @@ check(
     "SqliteErrorCode" in proc and "sql.Number is 2627 or 2601" in proc
     and "UNIQUE constraint failed" not in proc,
 )
+# Each worker now creates its own processor (one per subscription), so it owns
+# and disposes it. Stop must come first: StopProcessingAsync is what lets
+# in-flight handlers finish inside the shutdown timeout.
 check(
-    "worker stops the processor without disposing a DI-owned singleton",
-    "StopProcessingAsync" in proc and "processor.DisposeAsync()" not in proc,
+    "worker stops the processor it owns, then disposes it",
+    "StopProcessingAsync" in proc
+    and "processor.DisposeAsync()" in proc
+    and proc.index("StopProcessingAsync") < proc.index("processor.DisposeAsync()"),
 )
 check(
     "explicit settlement on every path",
@@ -168,7 +173,42 @@ check(
     re.search(r'"ServiceBus"\s*:\s*{\s*"Enabled"\s*:\s*false', settings) is not None,
 )
 
-# --- 9. XML comments are well-formed -----------------------------------
+# --- 9. Both subscriptions are actually consumed ------------------------
+messaging = read("QuotesApi/Extensions/MessagingExtensions.cs")
+check(
+    "one worker registered per subscription, both from configuration",
+    messaging.count("CreateWorker(sp, opts.TopicName!") == 2
+    and "opts.AuditSubscription!" in messaging
+    and "opts.SearchIndexSubscription!" in messaging,
+    "a handler registered but never consumed is unreachable production code",
+)
+check(
+    "handlers are keyed by the configured subscription names, not literals",
+    'AddKeyedScoped<IQuoteEventHandler, AuditQuoteEventHandler>(\n            opts.AuditSubscription!)' in messaging
+    and 'AddKeyedScoped<IQuoteEventHandler, SearchIndexQuoteEventHandler>(\n            opts.SearchIndexSubscription!)' in messaging,
+)
+
+# --- 10. No settings that read like knobs and turn nothing --------------
+options_src = read("QuotesApi/Messaging/ServiceBusOptions.cs")
+declared = set(re.findall(r"public\s+[\w?<>]+\s+(\w+)\s*{\s*get;\s*set;", options_src))
+declared.discard("Enabled")
+used_anywhere = ""
+for rel in (
+    "QuotesApi/Extensions/MessagingExtensions.cs",
+    "QuotesApi/Messaging/QuoteEventProcessorService.cs",
+    "QuotesApi/Messaging/ServiceBusQuoteEventPublisher.cs",
+    "QuotesApi/Extensions/DiagnosticsEndpointExtensions.cs",
+):
+    used_anywhere += read(rel)
+
+unread = sorted(name for name in declared if name not in used_anywhere)
+check(
+    "every ServiceBus option is read by something",
+    not unread,
+    ", ".join(unread) or "MaxDeliveryCount belongs to the subscription, not the app",
+)
+
+# --- 11. XML comments are well-formed -----------------------------------
 # MSBuild refuses to load a project whose comment contains "--" (MSB4025),
 # and it fails at RESTORE, before any code is compiled -- so one stray
 # double hyphen in a comment looks like a broken build, not a typo.

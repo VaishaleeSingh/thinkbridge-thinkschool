@@ -1,6 +1,7 @@
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Azure;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using QuotesApi.Messaging;
 
@@ -73,66 +74,89 @@ public static class MessagingExtensions
         services.AddSingleton<IQuoteEventPublisher, ServiceBusQuoteEventPublisher>();
 
         // Scoped: handlers resolve a scoped QuotesDbContext, so they must
-        // not outlive a single message-processing scope.
-        //
-        // Both handlers are registered, but only ONE processor runs (the audit
-        // subscription, below). The search-index handler is deliberately left
-        // unconsumed by this app: the exercise is fan-out at the broker, and
-        // adding a second processor here would prove nothing extra while
-        // doubling the shutdown and lock-renewal surface. That subscription's
-        // filter is verified against the emulator instead, by receiving from
-        // it directly -- see Quotes.Tests.Integration.ServiceBus. A real second
-        // consumer would be a separate deployable, which is the point of a
-        // topic in the first place.
-        services.AddKeyedScoped<IQuoteEventHandler, AuditQuoteEventHandler>("audit");
-        services.AddKeyedScoped<IQuoteEventHandler, SearchIndexQuoteEventHandler>("search-index");
+        // not outlive a single message-processing scope. Keyed by subscription
+        // name, which is how each worker finds its own handler.
+        // Keyed by the CONFIGURED names, not by string literals: the worker
+        // resolves its handler by the subscription name it was built with, so
+        // renaming a subscription in configuration has to move both together
+        // or the lookup throws at the first message instead of at startup.
+        services.AddKeyedScoped<IQuoteEventHandler, AuditQuoteEventHandler>(
+            opts.AuditSubscription!);
+        services.AddKeyedScoped<IQuoteEventHandler, SearchIndexQuoteEventHandler>(
+            opts.SearchIndexSubscription!);
 
         // Scoped store: same reason.
         services.AddScoped<IProcessedMessageStore, EfProcessedMessageStore>();
 
-        // Processor: one AMQP receiver on the audit subscription.
-        // All tunable settings come from ServiceBusOptions.
-        services.AddSingleton(sp =>
-        {
-            var client = sp.GetRequiredService<ServiceBusClient>();
-            var serviceBusOptions = sp.GetRequiredService<IOptions<ServiceBusOptions>>().Value;
+        // ONE WORKER PER SUBSCRIPTION. Both subscriptions are consumed by
+        // this app: "audit" takes every event, "search-index" takes only the
+        // content changes its SQL filter lets through. Registering the worker
+        // twice (rather than once, with the search-index handler registered
+        // and unreachable) is what makes the fan-out real instead of narrated.
+        //
+        // Registered as IHostedService instances built by a factory, because
+        // AddHostedService<T> registers one instance of a type and these two
+        // differ only by a constructor argument. Each owns its own processor.
+        services.AddSingleton<IHostedService>(sp =>
+            CreateWorker(sp, opts.TopicName!, opts.AuditSubscription!));
 
-            return client.CreateProcessor(
-                serviceBusOptions.TopicName,
-                serviceBusOptions.AuditSubscription,
-                new ServiceBusProcessorOptions
-                {
-                    // PeekLock is the default but stating it here is intentional:
-                    // ReceiveAndDelete would make retries and DLQ impossible.
-                    ReceiveMode = ServiceBusReceiveMode.PeekLock,
-
-                    // > 1 is what makes this instance itself a competing consumer.
-                    MaxConcurrentCalls = serviceBusOptions.MaxConcurrentCalls,
-
-                    // FALSE is the decision the whole exercise turns on:
-                    // auto-complete makes every outcome (complete/abandon/DLQ)
-                    // implicit. Explicit completion means every path is
-                    // intentional code.
-                    AutoCompleteMessages = false,
-
-                    // Without lock renewal, a handler that runs longer than
-                    // LockDuration finishes work on an expired lock,
-                    // CompleteAsync throws MessageLockLost, and the message
-                    // redelivers — exactly what the idempotency store exists to
-                    // absorb, but better to avoid the redelivery in the first place.
-                    MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(
-                        serviceBusOptions.MaxAutoLockRenewalMinutes),
-
-                    // Prefetch is left at 0 initially. Prefetched messages
-                    // are locked while sitting in the client-side buffer; an
-                    // aggressive prefetch with a slow handler produces lock
-                    // expiry and redelivery. Tune only with a measured reason.
-                    PrefetchCount = serviceBusOptions.PrefetchCount,
-                });
-        });
-
-        services.AddHostedService<QuoteEventProcessorService>();
+        services.AddSingleton<IHostedService>(sp =>
+            CreateWorker(sp, opts.TopicName!, opts.SearchIndexSubscription!));
 
         return services;
+    
+    /// <summary>
+    /// Builds one worker for one subscription: its processor, with the
+    /// settings the whole exercise turns on, and the subscription name it
+    /// resolves its handler and dedupe rows by.
+    /// </summary>
+    private static QuoteEventProcessorService CreateWorker(
+        IServiceProvider sp,
+        string topicName,
+        string subscriptionName)
+    {
+        var client = sp.GetRequiredService<ServiceBusClient>();
+        var serviceBusOptions = sp.GetRequiredService<IOptions<ServiceBusOptions>>().Value;
+
+        var processor = client.CreateProcessor(
+            topicName,
+            subscriptionName,
+            new ServiceBusProcessorOptions
+            {
+                // PeekLock is the default but stating it here is intentional:
+                // ReceiveAndDelete would make retries and DLQ impossible.
+                ReceiveMode = ServiceBusReceiveMode.PeekLock,
+
+                // > 1 is what makes this instance itself a competing consumer.
+                MaxConcurrentCalls = serviceBusOptions.MaxConcurrentCalls,
+
+                // FALSE is the decision the whole exercise turns on:
+                // auto-complete makes every outcome (complete/abandon/DLQ)
+                // implicit. Explicit completion means every path is
+                // intentional code.
+                AutoCompleteMessages = false,
+
+                // Without lock renewal, a handler that runs longer than
+                // LockDuration finishes work on an expired lock,
+                // CompleteAsync throws MessageLockLost, and the message
+                // redelivers -- exactly what the idempotency store exists to
+                // absorb, but better to avoid the redelivery in the first place.
+                MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(
+                    serviceBusOptions.MaxAutoLockRenewalMinutes),
+
+                // Prefetch is left at 0 initially. Prefetched messages are
+                // locked while sitting in the client-side buffer; an aggressive
+                // prefetch with a slow handler produces lock expiry and
+                // redelivery. Tune only with a measured reason.
+                PrefetchCount = serviceBusOptions.PrefetchCount,
+            });
+
+        return new QuoteEventProcessorService(
+            subscriptionName,
+            processor,
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            sp.GetRequiredService<IOptions<ServiceBusOptions>>(),
+            sp.GetRequiredService<ILogger<QuoteEventProcessorService>>());
     }
+}
 }

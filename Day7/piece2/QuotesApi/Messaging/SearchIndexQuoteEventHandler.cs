@@ -19,8 +19,6 @@ public sealed class SearchIndexQuoteEventHandler(
     QuotesDbContext db,
     ILogger<SearchIndexQuoteEventHandler> logger) : IQuoteEventHandler
 {
-    public string SubscriptionName => "search-index";
-
     public async Task HandleAsync(QuoteChangedEvent evt, CancellationToken cancellationToken = default)
     {
         // Upsert: fetch existing or create new.

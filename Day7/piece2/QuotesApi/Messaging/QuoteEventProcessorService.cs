@@ -8,8 +8,8 @@ using System.Text.Json;
 namespace QuotesApi.Messaging;
 
 /// <summary>
-/// Competing-consumer worker: wraps <see cref="ServiceBusProcessor"/> for the
-/// "audit" subscription and drains it with multiple concurrent calls.
+/// Competing-consumer worker: wraps a <see cref="ServiceBusProcessor"/> for one
+/// subscription and drains it with multiple concurrent calls.
 ///
 /// Key design decisions:
 ///
@@ -54,7 +54,15 @@ namespace QuotesApi.Messaging;
 ///      (MessageFailureClassifier.IsPoison). Right for malformed JSON, unknown
 ///      schema version — no point burning the delivery budget on these.
 /// </summary>
+/// ONE INSTANCE PER SUBSCRIPTION. The subscription name is a constructor
+/// argument rather than a lookup on the options, because the app runs this
+/// service twice: once for "audit" and once for "search-index". Each instance
+/// owns its own ServiceBusProcessor (and disposes it), resolves the handler
+/// registered under its own subscription key, and writes dedupe rows keyed by
+/// its own name -- which is exactly what the composite key on
+/// ProcessedMessages exists to keep separate.
 public sealed class QuoteEventProcessorService(
+    string subscriptionName,
     ServiceBusProcessor processor,
     IServiceScopeFactory scopeFactory,
     IOptions<ServiceBusOptions> options,
@@ -68,7 +76,7 @@ public sealed class QuoteEventProcessorService(
         await processor.StartProcessingAsync(stoppingToken);
         logger.LogInformation(
             "Service Bus processor started. Subscription={Subscription}, MaxConcurrentCalls={MaxConcurrentCalls}",
-            options.Value.AuditSubscription,
+            subscriptionName,
             options.Value.MaxConcurrentCalls);
 
         // Block until the host signals cancellation (shutdown).
@@ -87,7 +95,6 @@ public sealed class QuoteEventProcessorService(
     {
         var messageId = args.Message.MessageId;
         var deliveryCount = args.Message.DeliveryCount;
-        var subscriptionName = options.Value.AuditSubscription ?? "audit";
 
         // Restore trace context so consumer spans are children of the
         // request that published the message.
@@ -264,11 +271,12 @@ public sealed class QuoteEventProcessorService(
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        // Stop, do not dispose. The processor is registered as a singleton,
-        // so the DI container owns its lifetime and disposes it at shutdown.
-        // Disposing it here as well is a double-dispose of a shared object
-        // and would break any other consumer resolved from the container.
+        // This instance created its processor (see MessagingExtensions), so it
+        // owns it and disposes it. Stop first: StopProcessingAsync lets
+        // in-flight handlers finish inside the host's shutdown timeout rather
+        // than being cut off mid-transaction.
         await processor.StopProcessingAsync(cancellationToken);
+        await processor.DisposeAsync();
         await base.StopAsync(cancellationToken);
     }
 }

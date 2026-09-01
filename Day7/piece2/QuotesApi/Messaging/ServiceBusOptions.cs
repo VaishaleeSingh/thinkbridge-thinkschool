@@ -50,16 +50,11 @@ public sealed class ServiceBusOptions
     [Range(1, 60)]
     public int MaxAutoLockRenewalMinutes { get; set; } = 5;
 
-    /// <summary>
-    /// Mirrors the subscription's own MaxDeliveryCount for documentation and
-    /// for tests that assert the DLQ threshold. The BROKER owns the real
-    /// value — it is set on the subscription in Day19/infra/servicebus.bicep,
-    /// and changing this number alone changes nothing about when a message is
-    /// dead-lettered. The range matches what Service Bus itself accepts
-    /// (up to 2000), not an arbitrary local cap.
-    /// </summary>
-    [Range(1, 2000)]
-    public int MaxDeliveryCount { get; set; } = 3;
+    // Deliberately absent: MaxDeliveryCount. It is a property of the
+    // SUBSCRIPTION, set in Day19/infra/servicebus.bicep, and the broker is the
+    // only thing that acts on it. An app setting of the same name reads like a
+    // knob and turns nothing.
+
 }
 
 /// <summary>

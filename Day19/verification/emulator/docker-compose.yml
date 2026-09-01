@@ -11,12 +11,9 @@
 #   docker compose -f Day19/verification/emulator/docker-compose.yml up -d
 #   docker compose -f Day19/verification/emulator/docker-compose.yml down -v
 #
-# config.json here is a copy of the test suite's emulator-config.json. Two
-# copies can drift; they are kept separate because the test suite mounts its
-# copy from its own build output and must not depend on a path outside the
-# project. If you change the topology, change both -- verify-day19.py asserts
-# the test copy's schema, so a drifted copy here fails only when someone runs
-# this compose file.
+# The topology is mounted from the test project's emulator-config.json rather
+# than copied here. One file, one topology: a copy would drift, and the copy
+# that drifts is always the one nobody runs.
 #
 # Neither credential below is a secret: the SA password is chosen here for a
 # throwaway container, and SAS_KEY_VALUE is the emulator's one well-known key.
@@ -34,7 +31,7 @@ services:
       SQL_SERVER: sqledge
       MSSQL_SA_PASSWORD: "Th!nkSch001Local#"
     volumes:
-      - "./config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro"
+      - "../../../Day7/piece2/Quotes.Tests.Integration.ServiceBus/emulator-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro"
     networks:
       - servicebus
 
