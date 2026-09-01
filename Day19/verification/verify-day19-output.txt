@@ -20,6 +20,7 @@
 [PASS] both containers share a Docker network and SQL is addressed by alias       
 [PASS] tests do not request AMQP WebSockets (unsupported by the emulator)         
 [PASS] round-trip test asserts on the subscription the app actually consumes      
+[PASS] the emulator host lives in the collection fixture, not per test            
 [PASS] emulator host sets FullyQualifiedNamespace so ValidateOnStart passes       
 [PASS] Service Bus test project is in the solution                                   (a project outside the solution is never built by CI)
 [PASS] ServiceBus is off unless configured ("Enabled": false)                     
@@ -29,4 +30,4 @@
 [PASS] braces balance in every C# file                                               (catches the CS1513 an ill-placed insert produces)
 [PASS] no double hyphen inside an XML comment in any project file                    (MSB4025 fails restore before it compiles anything)
 
-30/30 checks passed
+31/31 checks passed

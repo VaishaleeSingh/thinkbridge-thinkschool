@@ -31,61 +31,13 @@ namespace Quotes.Tests.Integration.ServiceBus;
 /// - Dead-lettering is proved on the first delivery, which is what separates
 ///   the poison route from the MaxDeliveryCount route.
 [Collection("ServiceBusEmulator")]
-public class EmulatorIntegrationTests : IAsyncDisposable
+public class EmulatorIntegrationTests
 {
     private readonly ServiceBusEmulatorFixture _fixture;
-    private readonly WebApplicationFactory<Program> _factory;
-    private readonly string _dbFile = $"sb-test-{Guid.NewGuid():N}.db";
 
     public EmulatorIntegrationTests(ServiceBusEmulatorFixture fixture)
     {
         _fixture = fixture;
-
-        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-        {
-            builder.UseEnvironment("Development");
-
-            // Turn messaging on for this host. FullyQualifiedNamespace has to
-            // be set even though the client below is replaced: ServiceBusOptions
-            // validates it on start when Enabled is true, and ValidateOnStart
-            // means the host refuses to boot without it.
-            builder.UseSetting("ServiceBus:Enabled", "true");
-            builder.UseSetting("ServiceBus:FullyQualifiedNamespace", "localhost");
-            builder.UseSetting("ServiceBus:TopicName", "quote-events");
-            builder.UseSetting("ServiceBus:AuditSubscription", "audit");
-
-            builder.ConfigureServices(services =>
-            {
-                var dbDescriptor = services.SingleOrDefault(
-                    d => d.ServiceType == typeof(DbContextOptions<QuotesDbContext>));
-                if (dbDescriptor is not null) services.Remove(dbDescriptor);
-
-                services.AddDbContext<QuotesDbContext>(options =>
-                    options.UseSqlite($"Data Source={_dbFile}"));
-
-                // Replace the managed-identity client with one pointed at the
-                // emulator. Transport stays at the default (AMQP over TCP) --
-                // the emulator does not support AMQP WebSockets.
-                var clientDescriptors = services
-                    .Where(d => d.ServiceType == typeof(ServiceBusClient))
-                    .ToList();
-                foreach (var descriptor in clientDescriptors)
-                    services.Remove(descriptor);
-
-                services.AddSingleton(new ServiceBusClient(_fixture.ConnectionString));
-            });
-        });
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
-            await db.Database.EnsureDeletedAsync();
-        }
-
-        await _factory.DisposeAsync();
     }
 
     private async Task<T> WithDbAsync<T>(Func<QuotesDbContext, Task<T>> read)
@@ -93,7 +45,7 @@ public class EmulatorIntegrationTests : IAsyncDisposable
         // A fresh scope (and therefore a fresh DbContext) per poll. Reusing one
         // context would answer from its change tracker and never observe the
         // row the worker committed on another connection.
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
         return await read(db);
     }
@@ -126,14 +78,7 @@ public class EmulatorIntegrationTests : IAsyncDisposable
     [Fact]
     public async Task Published_event_is_consumed_and_audited()
     {
-        // Boot the host (and therefore the worker) before publishing.
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
-            await db.Database.MigrateAsync();
-        }
-
-        var publisher = _factory.Services.GetRequiredService<IQuoteEventPublisher>();
+        var publisher = _fixture.Factory.Services.GetRequiredService<IQuoteEventPublisher>();
         var evt = QuoteChangedEvent.Created(
             999, "test-user", "Emulator test", "Text", DateTimeOffset.UtcNow);
 
@@ -150,12 +95,6 @@ public class EmulatorIntegrationTests : IAsyncDisposable
     [Fact]
     public async Task Same_message_delivered_twice_produces_one_audit_row()
     {
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
-            await db.Database.MigrateAsync();
-        }
-
         var evt = QuoteChangedEvent.Created(
             1001, "test-user", "Idempotency", "Delivered twice", DateTimeOffset.UtcNow);
 
@@ -185,12 +124,6 @@ public class EmulatorIntegrationTests : IAsyncDisposable
     [Fact]
     public async Task Search_index_subscription_never_sees_a_delete()
     {
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
-            await db.Database.MigrateAsync();
-        }
-
         var created = QuoteChangedEvent.Created(
             2001, "test-user", "Filtered", "Created reaches search-index", DateTimeOffset.UtcNow);
         var deleted = QuoteChangedEvent.Deleted(2001, "test-user", DateTimeOffset.UtcNow);
@@ -238,12 +171,6 @@ public class EmulatorIntegrationTests : IAsyncDisposable
     [Fact]
     public async Task One_event_is_processed_once_per_subscription()
     {
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
-            await db.Database.MigrateAsync();
-        }
-
         // The same MessageId reaches both subscriptions from one publish. The
         // composite key on ProcessedMessages is what keeps them independent:
         // a single-column key would let whichever worker got there first
@@ -251,7 +178,7 @@ public class EmulatorIntegrationTests : IAsyncDisposable
         var evt = QuoteChangedEvent.Created(
             3001, "test-user", "Fan out", "One publish, two subscriptions", DateTimeOffset.UtcNow);
 
-        var publisher = _factory.Services.GetRequiredService<IQuoteEventPublisher>();
+        var publisher = _fixture.Factory.Services.GetRequiredService<IQuoteEventPublisher>();
         await publisher.PublishAsync(evt, CancellationToken.None);
 
         var both = await WaitUntilAsync(

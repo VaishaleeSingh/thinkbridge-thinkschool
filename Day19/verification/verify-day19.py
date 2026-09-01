@@ -154,9 +154,18 @@ check(
     "round-trip test asserts on the subscription the app actually consumes",
     "QuoteAuditEntries" in sb_tests,
 )
+# The host moved into the fixture: one host, one database, one set of
+# consumers for the whole collection. Per-test hosts all consumed the same
+# subscriptions, so a message published by one test could be handled by
+# another test's worker and written to a database the assertion never reads.
+check(
+    "the emulator host lives in the collection fixture, not per test",
+    "public WebApplicationFactory<Program> Factory" in fixture
+    and "WebApplicationFactory<Program>" not in sb_tests,
+)
 check(
     "emulator host sets FullyQualifiedNamespace so ValidateOnStart passes",
-    'UseSetting("ServiceBus:FullyQualifiedNamespace"' in sb_tests,
+    'UseSetting("ServiceBus:FullyQualifiedNamespace"' in fixture,
 )
 
 # --- 7. The Service Bus suite is actually compiled ----------------------
