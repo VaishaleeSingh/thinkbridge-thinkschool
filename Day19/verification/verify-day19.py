@@ -168,6 +168,31 @@ check(
     re.search(r'"ServiceBus"\s*:\s*{\s*"Enabled"\s*:\s*false', settings) is not None,
 )
 
+# --- 9. XML comments are well-formed -----------------------------------
+# MSBuild refuses to load a project whose comment contains "--" (MSB4025),
+# and it fails at RESTORE, before any code is compiled -- so one stray
+# double hyphen in a comment looks like a broken build, not a typo.
+xml_offenders = []
+for base in (API, os.path.join(ROOT, "Day19")):
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if d not in ("bin", "obj", ".git")]
+        for filename in filenames:
+            if not filename.endswith((".csproj", ".slnx", ".props", ".targets", ".runsettings")):
+                continue
+            path = os.path.join(dirpath, filename)
+            with io.open(path, encoding="utf-8-sig") as fh:
+                text = fh.read()
+            for match in re.finditer(r"<!--(.*?)-->", text, re.S):
+                body = match.group(1)
+                if "--" in body or body.endswith("-"):
+                    xml_offenders.append(os.path.relpath(path, ROOT))
+
+check(
+    "no double hyphen inside an XML comment in any project file",
+    not xml_offenders,
+    ", ".join(sorted(set(xml_offenders))) or "MSB4025 fails restore before it compiles anything",
+)
+
 width = max(len(n) for n, _, _ in results)
 failed = 0
 for name, ok, detail in results:

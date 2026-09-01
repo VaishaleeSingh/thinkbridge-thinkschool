@@ -23,5 +23,6 @@
 [PASS] emulator host sets FullyQualifiedNamespace so ValidateOnStart passes       
 [PASS] Service Bus test project is in the solution                                   (a project outside the solution is never built by CI)
 [PASS] ServiceBus is off unless configured ("Enabled": false)                     
+[PASS] no double hyphen inside an XML comment in any project file                    (MSB4025 fails restore before it compiles anything)
 
-25/25 checks passed
+26/26 checks passed

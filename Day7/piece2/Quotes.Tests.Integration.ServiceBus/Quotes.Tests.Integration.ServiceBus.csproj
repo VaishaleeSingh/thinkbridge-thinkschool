@@ -8,14 +8,19 @@
     <!-- These tests require Docker (Service Bus emulator + SQL Server), the
          same as Quotes.Tests.Integration.SqlServer, and like that suite this
          project IS in QuotesApi.slnx. A test project outside the solution is
-         never compiled by CI or by a solution-level test run, so it rots
-         silently -- which is a worse failure than an honest red test on a
+         never compiled by CI or by a solution level test run, so it rots
+         silently, which is a worse failure than an honest red test on a
          machine with no Docker daemon.
 
          Run this suite alone with:
            dotnet test Quotes.Tests.Integration.ServiceBus
-         Skip it in a solution-level run with:
-           dotnet test QuotesApi.slnx --filter "FullyQualifiedName!~ServiceBus"
+         To skip it in a solution level run, pass a test filter expression of
+         FullyQualifiedName!~ServiceBus. The exact commands are in
+         Day19/verification/day19-evidence-runbook.md.
+
+         (No double hyphens anywhere in this comment: XML forbids them inside
+         a comment, and MSBuild reports it as MSB4025 "could not be loaded"
+         before it reports anything about the code.)
     -->
   </PropertyGroup>
 
