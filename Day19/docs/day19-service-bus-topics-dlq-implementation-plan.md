@@ -430,8 +430,6 @@ Day19/
     day19-service-bus-topics-dlq-submission.md            # added during implementation
   infra/
     servicebus.bicep
-  verification/
-    screenshots/
 ```
 
 Names may consolidate where a type stays trivial, but publisher, processor,
@@ -513,8 +511,8 @@ No `Task.Delay`-based assertions — use `TaskCompletionSource` as Day 18 does.
 6. Show the Azure Monitor `DeadletteredMessages` metric (or state that it was not
    verified, if the emulator was used throughout).
 
-Screenshots land in `Day19/verification/screenshots/` with the same numbered
-naming Day 18 used.
+Results are recorded in the submission document rather than as separate
+evidence files: the day is two documents, this plan and that write-up.
 
 ## Observability
 

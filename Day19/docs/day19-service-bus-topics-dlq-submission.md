@@ -19,8 +19,7 @@ dotnet test Day7/piece2/Quotes.Tests.Integration.ServiceBus
   total: 5, failed: 0, succeeded: 5
 ```
 
-Log excerpts for each claim below are in
-`Day19/verification/emulator-run-evidence.md`, copied from that run.
+Log lines quoted below are copied verbatim from that run.
 
 ## Why the implementation lives in Day 7
 
@@ -242,7 +241,7 @@ Day7/piece2/QuotesApi.Migrations.SqlServer/ SyncModelThroughDay19
 Day7/piece2/Quotes.Tests.Unit/Messaging/  event, classifier, store
 Day7/piece2/Quotes.Tests.Integration/     QuoteEventPublishingTests
 Day7/piece2/Quotes.Tests.Integration.ServiceBus/  emulator suite (new project)
-Day19/                                    plan, this document, Bicep, verification
+Day19/                                    plan, this document, Bicep
 ```
 
 ## Verification
@@ -258,10 +257,55 @@ Day19/                                    plan, this document, Bicep, verificati
 | Retryable vs poison classification | `MessageFailureClassifierTests` |
 | The dedupe key is enforced by the database | `ProcessedMessageStoreTests` — real SQLite, not the InMemory provider, which does not enforce constraints |
 
-`Day19/verification/` also holds two things that run anywhere: `verify-day19.py`
-(31 file-level checks) and `idempotency-proof.py`, which executes the
-two-transaction defect this branch fixed — two competing consumers leave 2 audit
-rows under the old shape and 1 under the fix.
+### The run, in its own words
+
+Fan-out — one publish, both subscriptions:
+
+```text
+[13:23:43 INF] Published QuoteCreated for quote 999 with MessageId fb57f8158e3baade4c00920c812f29c0
+[13:23:43 INF] Processing MessageId=fb57f8158e3baade4c00920c812f29c0 DeliveryCount=1 Subscription=audit
+[13:23:43 INF] Processing MessageId=fb57f8158e3baade4c00920c812f29c0 DeliveryCount=1 Subscription=search-index
+[13:23:43 INF] Audit: recorded QuoteCreated for quote 999 (EventId=fb57f8158e3baade4c00920c812f29c0)
+[13:23:43 INF] SearchIndex: upserted projection for quote 999 (EventType=QuoteCreated, EventId=fb57f8158e3baade4c00920c812f29c0)
+```
+
+The filter — quote 2001 created then deleted; the delete reaches `audit` only,
+and no `Subscription=search-index` line exists for it:
+
+```text
+[13:23:43 INF] Processing MessageId=2e89f7622777c0f7ed41471b7bd1ae57 DeliveryCount=1 Subscription=audit
+[13:23:43 INF] Processing MessageId=2e89f7622777c0f7ed41471b7bd1ae57 DeliveryCount=1 Subscription=search-index
+[13:23:43 INF] Processing MessageId=283da8b31e975393dd7c5234d4312b73 DeliveryCount=1 Subscription=audit
+[13:23:43 INF] Audit: recorded QuoteDeleted for quote 2001 (EventId=283da8b31e975393dd7c5234d4312b73)
+```
+
+Idempotency — the same id delivered twice, one side effect:
+
+```text
+[13:23:46 INF] Audit: recorded QuoteCreated for quote 1001 (EventId=cb1f6bae3a3fe2c7499ed44e2480d3d9)
+[13:23:46 INF] Duplicate MessageId=cb1f6bae3a3fe2c7499ed44e2480d3d9 for Subscription=audit - completing without side effect
+[13:23:46 INF] Duplicate MessageId=cb1f6bae3a3fe2c7499ed44e2480d3d9 for Subscription=search-index - completing without side effect
+```
+
+Those duplicates arrive at `DeliveryCount=1`: a second *message*, not a
+redelivery of one — the case broker duplicate detection would have caught. The
+consumer-side store covers both, which is why the guarantee belongs there.
+
+Dead-letter — a non-JSON body, settled on the first delivery:
+
+```text
+[13:23:53 INF] Processing MessageId=poison-a92908863cf64caf9fff819e2df46e32 DeliveryCount=1 Subscription=audit
+[13:23:53 WRN] Poison message detected MessageId=poison-a92908863cf64caf9fff819e2df46e32 Reason=InvalidPayload. Dead-lettering immediately.
+System.Text.Json.JsonException: 't' is an invalid start of a property name.
+```
+
+The transaction — side effect, then dedupe row, then completion:
+
+```text
+INSERT INTO "QuoteAuditEntries" (...) RETURNING "Id";
+INSERT INTO "ProcessedMessages" ("MessageId", "SubscriptionName", "Outcome", "ProcessedAtUtc") VALUES (...);
+[13:23:43 INF] Completed MessageId=fb57f8158e3baade4c00920c812f29c0 EventType=QuoteCreated in 31ms
+```
 
 ## What is not verified
 
@@ -289,5 +333,7 @@ rows under the old shape and 1 under the fix.
   while the maintained backend has been `Day7/piece2` since Day 11 — so nothing
   in Days 11, 12, 17, 18 or 19 has been compiled by CI. Running this suite for
   the first time in weeks surfaced two failures that had nothing to do with Day
-  19 (`Day19/verification/day19-review-findings.md`, findings 13 and 14). Pointing
-  CI at Day 7 is the change that stops that recurring.
+  19: a test asking for an `items` property Day 12 had renamed, and a migrations
+  assertion that could not pass while startup created the SQL Server schema with
+  `EnsureCreatedAsync`. Both are fixed on this branch. Pointing CI at Day 7 is
+  the change that stops that recurring.
