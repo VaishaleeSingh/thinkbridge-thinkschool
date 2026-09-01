@@ -21,6 +21,66 @@ not execute `QuoteEventProcessorService`.
 
 Run these on your own machine, from the repository root, on this branch.
 
+### 0. Regenerate the SQL Server migrations (one command, do this first)
+
+The SQL Server migration set stops at `20260812114103_InitialCreate`. Since 24
+August, `Program.cs` created the SQL Server schema with `EnsureCreatedAsync`
+instead, which records nothing in `__EFMigrationsHistory` and bypassed that
+project entirely, so it drifted further from the model with every day that
+added a column. Day 19 restores a single `MigrateAsync` path for both
+providers, which means the migration set has to catch up first:
+
+```bash
+dotnet tool install --global dotnet-ef      # once, if you do not have it
+cd Day7/piece2
+dotnet ef migrations add SyncModelThroughDay19 \
+  --project QuotesApi.Migrations.SqlServer \
+  --startup-project QuotesApi.Migrations.SqlServer \
+  --context QuotesApi.Data.QuotesDbContext \
+  --output-dir Migrations
+```
+
+This needs no Docker and no live SQL Server: `migrations add` only diffs the
+model against the last migration. One migration captures everything since 12
+August, including Day 19's `ProcessedMessages`, `QuoteAuditEntries` and
+`QuoteSearchProjections`.
+
+Then `SqlServerMigrationTests` means something again: it asserts that every
+migration in the assembly is applied to a fresh database, which is exactly the
+guarantee `EnsureCreated` had quietly removed.
+
+**Deployed databases need one extra step.** Any database created by the old
+`EnsureCreated` path has the tables but no `__EFMigrationsHistory`, so
+`MigrateAsync` will try to `CREATE TABLE` over them and fail on the next
+deploy. For this training app the simplest answer is to drop and recreate the
+Azure database. If that is not acceptable, baseline it instead — list the
+migration ids and mark them all as applied, since the schema already matches
+the model:
+
+```bash
+dotnet ef migrations list --project QuotesApi.Migrations.SqlServer \
+  --startup-project QuotesApi.Migrations.SqlServer \
+  --context QuotesApi.Data.QuotesDbContext
+```
+
+```sql
+IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
+BEGIN
+    CREATE TABLE [__EFMigrationsHistory] (
+        [MigrationId]    nvarchar(150) NOT NULL,
+        [ProductVersion] nvarchar(32)  NOT NULL,
+        CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
+    );
+END;
+
+-- One row per id from `migrations list`. ALL of them: the schema already
+-- matches the model, so a partially baselined database would send Migrate off
+-- to create tables that are already there.
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES (N'20260812114103_InitialCreate', N'10.0.10'),
+       (N'<the id migrations list prints for SyncModelThroughDay19>', N'10.0.10');
+```
+
 ### 1. It compiles (do this first — everything below assumes it)
 
 ```bash
@@ -39,6 +99,22 @@ dotnet test Day7/piece2/QuotesApi.slnx --filter "FullyQualifiedName!~ServiceBus"
 Expect green, including `QuoteEventPublishingTests` — quote writes must still
 succeed with `ServiceBus:Enabled = false` and the no-op publisher, which is the
 guarantee that Day 19 did not break Days 1–18.
+
+The SQL Server suite needs Docker and step 0's migration. Its first real run in
+weeks (1 September) surfaced two failures that had nothing to do with Day 19,
+both fixed on this branch:
+
+- `TwoConcurrentRequests_AddingSameQuoteId_ResultInExactlyOneItem` asked the
+  response for an `items` property. Day 12 renamed that read shape's list to
+  `Quotes`; the test had not been touched since Day 7. Broken since Day 12.
+- `Factory_OnStartup_AppliesAllMigrationsToFreshSqlServerDatabase` asserted
+  migrations were applied while startup was calling `EnsureCreatedAsync`.
+  Broken since 24 August, and the reason for step 0.
+
+Neither was caught because `.github/workflows/ci.yml` builds `Day5/piece2`,
+while the maintained backend has been `Day7/piece2` since Day 11. Pointing CI
+at Day 7 is the change that stops this recurring; it is a repository-wide
+decision rather than a Day 19 one, so it is raised here rather than made.
 
 Save the console output as `verification/dotnet-test-output.txt`.
 

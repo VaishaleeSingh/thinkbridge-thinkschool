@@ -198,6 +198,51 @@ the endpoint's validation) that had nothing to do with messaging. **Restored.**
 | RBAC can be assigned at topic-subscription scope | Correct — supported, though the portal cannot do it (CLI or ARM only). The Bicep's per-subscription Receiver assignments are valid |
 | Emulator needs a SQL container, hosts one non-renameable namespace, AMQP TCP only, no runtime config reload | Correct — and three of those were being violated, see finding 5 |
 
+## Found by actually running the suite (1 September)
+
+The build failed first on an XML comment of mine: `--` is illegal inside an XML
+comment, and MSBuild rejects the project file at restore (MSB4025), so one
+comment in `Quotes.Tests.Integration.ServiceBus.csproj` looked like a broken
+solution. Fixed, and `verify-day19.py` now scans every project file for it.
+
+With that gone the solution built and 196 of 198 tests passed. Both failures
+were in the SQL Server suite and **neither came from Day 19** — all four files
+involved are byte-identical to `main`:
+
+### 13. `TwoConcurrentRequests_AddingSameQuoteId_ResultInExactlyOneItem` — broken since Day 12
+
+The test reads `finalState.GetProperty("items")`. Day 12 (`288d2b6`) replaced
+the collection read shape with `CollectionDetail`, whose list is named
+`Quotes`. The test has not been touched since Day 7 (`b8e5cc9`), so it has been
+asking for a property that does not exist, and failing with a bare
+`KeyNotFoundException` that names neither the rename nor the test's real
+subject. **Fixed** on this branch: `quotes`, with a comment saying why.
+
+### 14. `Factory_OnStartup_AppliesAllMigrationsToFreshSqlServerDatabase` — broken since 24 August
+
+`Program.cs` branched on `IsSqlServer()` and called `EnsureCreatedAsync`
+(commit `20ac73a`, 24 August). `EnsureCreated` writes no
+`__EFMigrationsHistory`, so `GetAppliedMigrationsAsync()` returns empty and the
+assertion that every migration is applied cannot pass. Worse than the red test:
+the SQL Server migrations project was bypassed entirely, so it drifted from the
+model for a fortnight, and a deployed database created that way cannot be moved
+forward at all — only dropped.
+
+**Fixed** on this branch, per your decision: `Program.cs` is back to one
+`MigrateAsync` path for both providers. This requires the SQL Server migration
+set to be regenerated first — one `dotnet ef migrations add`, step 0 of the
+runbook — which cannot be run from this environment. A database created by the
+old path also needs baselining before the next deploy; the runbook has the
+script.
+
+### Why neither was noticed
+
+`.github/workflows/ci.yml` restores, builds and tests `Day5/piece2/QuotesApi.slnx`.
+The maintained backend has been `Day7/piece2` since Day 11. Nothing in Days 11,
+12, 17, 18 or 19 has ever been compiled or tested by CI, and this suite had not
+run anywhere in weeks. Pointing CI at Day 7 is the change that stops this
+recurring — flagged rather than made, since it affects the whole repository.
+
 ## Open gaps — not fixed, and why
 
 1. **No unit tests for the processor.** The plan asked for the decision logic to

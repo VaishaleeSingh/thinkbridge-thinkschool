@@ -122,18 +122,37 @@ app.UseStaticFiles();
 
 // Applies any pending EF Core migrations on startup, so the database schema
 // is always up to date before the app starts accepting requests.
+//
+// One path for both providers, deliberately. Between 24 August and Day 19
+// this branched on IsSqlServer() and called EnsureCreatedAsync() there,
+// because the SQL Server migration set had gone stale and creating the
+// schema straight from the model was the quick way past it. Three things
+// that cost, none of them obvious at the time:
+//
+//   - EnsureCreated writes no __EFMigrationsHistory, so nothing records what
+//     the deployed schema is or lets it be moved forward incrementally. The
+//     only way to pick up a model change is to drop the database.
+//   - It silently bypassed QuotesApi.Migrations.SqlServer entirely, so the
+//     provider-specific migrations nobody was running kept drifting further
+//     from the model.
+//   - SqlServerMigrationTests asserts every migration is applied, and has
+//     been failing since that day. Nobody saw it: CI builds Day5/piece2, so
+//     the Day 7 SQL Server suite has not run anywhere in weeks.
+//
+// The SQL Server migrations have been regenerated to match the current model
+// (see QuotesApi.Migrations.SqlServer), so MigrateAsync is once again the
+// honest call for both providers.
+//
+// DEPLOYED DATABASES: one created by the old EnsureCreated path has the
+// tables but no migrations-history table, and MigrateAsync will try to
+// CREATE TABLE over them. Such a database has to be baselined (or dropped
+// and recreated) before the first deploy that carries this change --
+// Day19/verification/day19-evidence-runbook.md has the baseline script.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<QuotesDbContext>();
-    if (db.Database.IsSqlServer())
-    {
-        // SQL Server is created from the current model for Azure setup.
-        await db.Database.EnsureCreatedAsync();
-    }
-    else
-    {
-        await db.Database.MigrateAsync();
-    }
+
+    await db.Database.MigrateAsync();
 
     await DbInitializer.SeedAsync(db);
 }

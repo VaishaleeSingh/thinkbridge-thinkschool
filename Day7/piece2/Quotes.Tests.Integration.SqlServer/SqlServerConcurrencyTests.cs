@@ -109,7 +109,14 @@ public class SqlServerConcurrencyTests : IAsyncLifetime
 
         var getResponse = await _client.SendAsync(AuthedRequest(HttpMethod.Get, location, token));
         var finalState = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var matchingItems = finalState.GetProperty("items").EnumerateArray()
+        // "quotes", not "items": Day 12 replaced the collection's read shape
+        // with CollectionDetail, whose list of quotes is named Quotes. This
+        // test was written against the pre-Day-12 shape and has asked for a
+        // property that has not existed since, failing with a bare
+        // KeyNotFoundException that says nothing about the rename. It went
+        // unnoticed because CI builds Day5/piece2, so this suite has not run
+        // anywhere since.
+        var matchingItems = finalState.GetProperty("quotes").EnumerateArray()
             .Count(i => i.GetProperty("quoteId").GetInt32() == 99);
 
         matchingItems.Should().Be(1, "the composite primary key on (CollectionId, QuoteId) should let exactly one insert win, not zero and not two");
