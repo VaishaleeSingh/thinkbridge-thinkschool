@@ -335,6 +335,13 @@ public static class InfrastructureExtensions
         // Enabled:false by default so unrelated tests never attempt AMQP.
         services.AddMessaging(configuration);
 
+        // Day 20 -- the transactional outbox. Registered AFTER AddMessaging
+        // because the relay resolves the IQuoteEventPublisher that call
+        // registers, and registered unconditionally because the outbox WRITER
+        // is part of the domain transaction rather than part of messaging.
+        // Only the relay itself is behind a switch (Outbox:RelayEnabled).
+        services.AddOutbox(configuration);
+
         return services;
     }
 }

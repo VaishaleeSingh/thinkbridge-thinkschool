@@ -6,7 +6,12 @@ application — a small quotes API — is carried forward rather than rewritten,
 and each day's folder is a working snapshot of what it looked like at the end
 of that day.
 
-The current, most complete version of the application is **`Day5/piece2`**.
+The current, most complete version of the application is **`Day7/piece2`**.
+It has been since Day 13: Day 6 was skipped, `Day7/piece2` started as a verified
+byte-identical copy of `Day5/piece2`, and every day from 13 onward has added to
+it in place rather than copying it forward. `Day5/piece2` is still what CI
+builds (see "Working in this repo"), which is a gap rather than a statement
+about which folder is current.
 
 ## The application
 
@@ -23,6 +28,9 @@ first-party JWT and Microsoft Entra ID — selected per request.
 | Typed configuration | `QuotesApi/Configuration` |
 | Cross-cutting middleware | `QuotesApi/Middleware` |
 | Tracing setup | `QuotesApi/Extensions/ObservabilityExtensions.cs` |
+| Messaging (publisher, consumers, idempotency) | `QuotesApi/Messaging` |
+| Transactional outbox (writer, relay, retention) | `QuotesApi/Messaging/Outbox` |
+| The write transaction that owns both | `QuotesApi/Services/QuoteWriteService.cs` |
 
 ## Days
 
@@ -97,13 +105,37 @@ and the verification report — including what could not be verified, namely tha
 the C# changes have not been compiled, because no .NET SDK was available where the
 front end was built.
 
+**Day 20 — the transactional outbox.** Day 19 published to Service Bus from
+the request handler, after the write had already committed, with the publisher
+swallowing every exception so the caller still got a 201 — and said out loud in
+`ServiceBusQuoteEventPublisher` that an event lost that way was "lost unless
+replayed from an outbox". Day 20 builds that outbox. `QuoteWriteService` commits
+the domain change and an `OutboxMessages` row in one EF transaction;
+`OutboxRelayService` claims rows with a provider-neutral conditional UPDATE,
+publishes, then marks them Sent. No endpoint holds an `IQuoteEventPublisher`
+any more, which is the observable part: nothing on the request path can reach
+the broker.
+
+What it does and does not guarantee is the interesting half.
+`Day20/docs/day20-transactional-outbox-exercise.md` states it as at-least-once
+with atomic intent, not exactly-once: publishing and marking are two systems
+with no transaction between them, so a crash in that gap republishes — and
+Day 19's `(MessageId, SubscriptionName)` primary key, over a deterministic
+`EventId`, is what makes that duplicate a non-event rather than a second side
+effect. At-least-once delivery, exactly-once effect. The crash tests in
+`Quotes.Tests.Integration/OutboxCrashRecoveryTests.cs` assert each crash point
+in turn, and `Day20/scripts/verify-crash-recovery.ps1` runs the manual proof —
+a real `Stop-Process -Force` between commit and publish, with the pending row
+asserted *before* the kill so that what follows is recovery and not a race that
+happened to resolve.
+
 ## Running it
 
 Prerequisites: .NET 10 SDK. Docker is needed only for the SQL Server
 integration tests and for running Jaeger locally.
 
 ```bash
-cd Day5/piece2
+cd Day7/piece2
 dotnet run --project QuotesApi
 ```
 
@@ -130,28 +162,37 @@ dotnet user-secrets --project QuotesApi set "ApplicationInsights:ConnectionStrin
 ## Tests
 
 ```bash
-cd Day5/piece2
+cd Day7/piece2
 dotnet test QuotesApi.slnx
 ```
 
-Four projects: `Quotes.Tests.Unit` (domain and services, no host),
-`QuotesApi.Tests` and `Quotes.Tests.Integration` (in-process host via
-`WebApplicationFactory`), and `Quotes.Tests.Integration.SqlServer`
-(Testcontainers — **requires Docker running**; these are the tests that fail
-first if Docker is not up).
+Five test projects: `Quotes.Tests.Unit` (domain, services and the outbox relay;
+no host), `QuotesApi.Tests` and `Quotes.Tests.Integration` (in-process host via
+`WebApplicationFactory`), `Quotes.Tests.Integration.SqlServer` (Testcontainers)
+and `Quotes.Tests.Integration.ServiceBus` (the Service Bus emulator plus a SQL
+Server container). The last two **require Docker running** and are the tests
+that fail first if it is not up; everything else, including all of the Day 20
+outbox tests, runs without it.
+
+`Outbox__RelayEnabled` and `ServiceBus__Enabled` must not be set in the shell
+that runs the tests. All four test projects that boot the app force the relay
+off in a `[ModuleInitializer]` for that reason — a test process inherits its
+parent's environment, and a relay running inside the test hosts drains the rows
+the outbox assertions read.
 
 As a container (no Dockerfile — the image is built from the project):
 
 ```bash
-cd Day5/piece2
+cd Day7/piece2
 dotnet publish QuotesApi --os linux-musl --arch x64 /t:PublishContainer
 docker run --rm -p 8080:8080 -e Jwt__Secret="<at least 32 characters>" quotes-api:0.1.0
 curl http://localhost:8080/health
 ```
 
 The `Jwt__Secret` variable is required — user secrets do not exist inside a
-container, and startup validation fails fast without it. See
-`Day5/piece2/docs/containerising.md`.
+container, and startup validation fails fast without it. The write-up is
+`Day5/piece2/docs/containerising.md`, where it was written; the image now built
+by the command above is `Day7/piece2`'s.
 
 Coverage:
 
@@ -170,8 +211,14 @@ previous days, producing a report that never changes no matter what you edit.
 
 - `main` is protected. Every task gets its own branch off an up-to-date `main`,
   and lands through a pull request that CI has passed.
-- CI (`.github/workflows/ci.yml`) restores, builds and tests the current day's
-  solution on every push and on every PR into `main`.
+- CI (`.github/workflows/ci.yml`) restores, builds and tests
+  `Day5/piece2/QuotesApi.slnx` on every push and on every PR into `main`.
+  **That is no longer the current solution.** All work from Day 13 onward lands
+  in `Day7/piece2`, so CI has not built or run any of it — which is how the
+  Day 7 SQL Server suite stayed red for weeks without anyone noticing (see the
+  note in `Program.cs` about `EnsureCreated`). Pointing CI at
+  `Day7/piece2/QuotesApi.slnx` is its own small change and is worth doing before
+  the next day's work.
 - Line endings: this repo stores LF and is worked on from Windows. Set
   `git config core.autocrlf true` once per clone. Without it every file shows
   as fully modified and real changes disappear into thousands of lines of
