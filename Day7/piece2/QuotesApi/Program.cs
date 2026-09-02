@@ -193,6 +193,11 @@ app.MapQuotesHealthChecks();
 app.MapQuoteEndpoints();
 app.MapCollectionEndpoints();
 
+// Day 20 -- GET /api/outbox/status. Mapped in every environment, unlike the
+// diagnostics routes below: this is what an operator reads when they suspect
+// the relay has stopped, and that suspicion does not arise in Development.
+app.MapOutboxEndpoints();
+
 // Day 18 -- requests enqueue quote-author reports and return 202 immediately;
 // QueuedBackgroundJobService drains the bounded channel outside the request.
 app.MapBackgroundJobEndpoints();

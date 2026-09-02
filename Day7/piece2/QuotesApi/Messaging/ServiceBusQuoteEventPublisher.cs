@@ -30,9 +30,18 @@ namespace QuotesApi.Messaging;
 ///    rule carries over here unchanged, and matters more because the payload
 ///    now leaves the process.
 ///
-/// 5. Send failures are caught and logged at Error; they do NOT fail the HTTP
-///    response that already committed the database write. The plan documents
-///    this as the publish/commit gap that the transactional outbox would close.
+/// 5. DAY 20 CHANGED THIS ONE. Send failures used to be caught here and
+///    logged at Error, so that a broker outage would not turn a successful
+///    201 into a 500. That was the least-bad choice while the publish ran on
+///    the request path: the write had already committed, and the only
+///    alternative was to lie to the caller about a quote that exists.
+///
+///    Nothing calls this from a request path any more. The only caller is
+///    OutboxRelayService, which needs to know whether the send succeeded --
+///    it has a durable row to retry, a retry budget, and a poison rule. A
+///    publisher that swallows the exception would report success, the relay
+///    would mark the row Sent, and the message would be lost by exactly the
+///    mechanism built to stop that. So this now throws, and the relay decides.
 /// </summary>
 public sealed class ServiceBusQuoteEventPublisher(
     ServiceBusSender sender,
@@ -40,50 +49,42 @@ public sealed class ServiceBusQuoteEventPublisher(
 {
     public async Task PublishAsync(QuoteChangedEvent evt, CancellationToken cancellationToken = default)
     {
-        try
+        var body = JsonSerializer.SerializeToUtf8Bytes(evt);
+
+        var message = new ServiceBusMessage(body)
         {
-            var body = JsonSerializer.SerializeToUtf8Bytes(evt);
+            MessageId = evt.EventId,
+            ContentType = "application/json",
+            CorrelationId = Activity.Current?.TraceId.ToString(),
+            Subject = evt.EventType
+        };
 
-            var message = new ServiceBusMessage(body)
-            {
-                MessageId = evt.EventId,
-                ContentType = "application/json",
-                CorrelationId = Activity.Current?.TraceId.ToString(),
-                Subject = evt.EventType
-            };
+        // eventType is the property the subscription SQL filter matches on.
+        // Subject alone is not addressable in a SQL filter expression.
+        message.ApplicationProperties["eventType"] = evt.EventType;
+        message.ApplicationProperties["schemaVersion"] = evt.SchemaVersion;
 
-            // eventType is the property the subscription SQL filter matches on.
-            // Subject alone is not addressable in a SQL filter expression.
-            message.ApplicationProperties["eventType"] = evt.EventType;
-            message.ApplicationProperties["schemaVersion"] = evt.SchemaVersion;
+        // Carry trace context as a string, not as an Activity object.
+        // The handler restores it by reading this property and starting
+        // a new Activity with that parent — making the consumer span a
+        // child of the request that published it.
+        //
+        // Day 20: Activity.Current here is the relay's "Outbox publish" span,
+        // which was itself started with the ORIGINATING REQUEST's traceparent
+        // as its parent (stored on the outbox row). So this still links the
+        // consumer back to the request, across a gap of minutes and a
+        // boundary of two processes -- which is the whole reason the row
+        // carries a TraceParent column.
+        var traceparent = Activity.Current?.Id;
+        if (traceparent is not null)
+            message.ApplicationProperties["traceparent"] = traceparent;
 
-            // Carry trace context as a string, not as an Activity object.
-            // The handler restores it by reading this property and starting
-            // a new Activity with that parent — making the consumer span a
-            // child of the request that published it.
-            var traceparent = Activity.Current?.Id;
-            if (traceparent is not null)
-                message.ApplicationProperties["traceparent"] = traceparent;
+        // No try/catch. See point 5 above: the relay is the only caller and it
+        // is the thing that knows how to handle a failure.
+        await sender.SendMessageAsync(message, cancellationToken);
 
-            await sender.SendMessageAsync(message, cancellationToken);
-
-            logger.LogInformation(
-                "Published {EventType} for quote {QuoteId} with MessageId {MessageId}",
-                evt.EventType, evt.QuoteId, evt.EventId);
-        }
-        catch (Exception ex)
-        {
-            // PUBLISH/COMMIT GAP: the database write already committed.
-            // Failing the HTTP response here would give the caller a 500
-            // even though the quote was successfully saved, which is worse
-            // than the alternative. Log at Error so the gap is visible; the
-            // transactional outbox pattern is the correct fix (see Day 19
-            // submission notes).
-            logger.LogError(
-                ex,
-                "Failed to publish {EventType} for quote {QuoteId} (EventId={EventId}). " +
-                "The database write succeeded; this event is lost unless replayed from an outbox.",
-                evt.EventType, evt.QuoteId, evt.EventId);
-        }
+        logger.LogInformation(
+            "Published {EventType} for quote {QuoteId} with MessageId {MessageId}",
+            evt.EventType, evt.QuoteId, evt.EventId);
     }
 }

@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using QuotesApi.Authorization;
-using QuotesApi.Messaging;
 using QuotesApi.Models;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
@@ -17,6 +16,13 @@ namespace QuotesApi.Extensions;
 /// work, and translate the result into an HTTP response. There is no
 /// database or business logic directly in this file — that lives in
 /// QuoteRepository and friends.
+///
+/// As of Day 20 no handler in this file takes an IQuoteEventPublisher. The
+/// write endpoints go through IQuoteWriteService, which commits the change and
+/// its outbox row in one transaction; OutboxRelayService does the publishing,
+/// afterwards, from the committed row. That absence is the point -- nothing on
+/// the request path can reach the broker, so no request can commit a change
+/// whose event is then lost.
 ///
 /// As of Day 3 part 2, endpoints also declare exactly which permission
 /// they need via .RequireAuthorization("policy-name") — see
@@ -89,10 +95,8 @@ public static class QuoteEndpointExtensions
         // attempt can be checked against it — see MustOwnQuoteHandler.
         group.MapPost("/", async (
             CreateQuoteRequest request,
-            IQuoteRepository repository,
+            IQuoteWriteService writeService,
             IQuoteTextNormalizer normalizer,
-            IQuoteEventPublisher publisher,
-            IClock clock,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
@@ -145,22 +149,26 @@ public static class QuoteEndpointExtensions
                 callerId,
                 request.BackgroundImageUrl);
 
-            var created = await repository.AddAsync(
-                quote,
-                cancellationToken);
-
-            // Publish AFTER commit. Not atomic with the database write:
-            // a crash here loses the event. See submission notes for why
-            // the transactional outbox is the correct fix.
+            // Day 20 -- one call, one transaction: the quote row and the
+            // QuoteCreated outbox row commit together or not at all.
             //
-            // CancellationToken.None deliberately, NOT the request token:
-            // the write has already committed, so a client that disconnects
-            // (or a browser that cancels the request) must not also cancel
-            // the publish and silently drop an event describing a change
-            // that is durably in the database.
-            var evt = QuoteChangedEvent.Created(
-                created.Id, callerId, created.Author, created.Text, clock.UtcNow);
-            await publisher.PublishAsync(evt, CancellationToken.None);
+            // Through Day 19 this handler saved the quote and then published to
+            // Service Bus, in that order, with the publisher swallowing every
+            // exception so the caller still got a 201. A crash in between --
+            // or a broker outage -- left a committed quote whose event nobody
+            // would ever send, and nothing behind to replay it from. The
+            // handler no longer knows the broker exists; OutboxRelayService
+            // publishes from the committed row.
+            //
+            // The request's CancellationToken is passed here and that is now
+            // safe: it cancels a transaction that has not committed, which
+            // loses nothing. Before Day 20 the publish deliberately used
+            // CancellationToken.None, because by then the write WAS committed
+            // and a client disconnect would otherwise have dropped the event.
+            var created = await writeService.CreateAsync(
+                quote,
+                callerId,
+                cancellationToken);
 
             return Results.Created(
                 $"/api/quotes/{created.Id}",
@@ -189,9 +197,8 @@ public static class QuoteEndpointExtensions
             int id,
             UpdateQuoteRequest request,
             IQuoteRepository repository,
+            IQuoteWriteService writeService,
             IQuoteTextNormalizer normalizer,
-            IQuoteEventPublisher publisher,
-            IClock clock,
             IAuthorizationService authorizationService,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
@@ -242,24 +249,27 @@ public static class QuoteEndpointExtensions
                 request.BackgroundImageUrl,
                 $"{normalizedAuthor}|{normalizedText}");
 
-            var updated = await repository.UpdateAsync(
+            var callerId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? user.FindFirst("sub")?.Value;
+
+            // The update and its QuoteUpdated outbox row, in one transaction.
+            // Note the read above is still the repository's: only the WRITE
+            // needs the transaction boundary, and routing reads through the
+            // write service would make it a second repository for no reason.
+            var updated = await writeService.UpdateAsync(
                 id,
                 normalizedAuthor,
                 normalizedText,
                 normalizedBackground,
+                callerId,
                 cancellationToken);
 
+            // Still reachable despite the load above: the quote can be deleted
+            // between the ownership check and the update. Nothing was written
+            // in that case, so nothing was enqueued either -- which is the
+            // property the single transaction buys.
             if (updated is null)
                 return Results.NotFound();
-
-            var callerId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                ?? user.FindFirst("sub")?.Value;
-            // CancellationToken.None: see the POST handler above -- the
-            // write is committed, the publish must not be cancelled with the
-            // request.
-            var evt = QuoteChangedEvent.Updated(
-                updated.Id, callerId, updated.Author, updated.Text, clock.UtcNow);
-            await publisher.PublishAsync(evt, CancellationToken.None);
 
             return Results.Ok(updated);
         }).RequireAuthorization("can-edit-quotes");
@@ -279,8 +289,7 @@ public static class QuoteEndpointExtensions
         group.MapDelete("/{id:int}", async (
             int id,
             IQuoteRepository repository,
-            IQuoteEventPublisher publisher,
-            IClock clock,
+            IQuoteWriteService writeService,
             IAuthorizationService authorizationService,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
@@ -296,18 +305,16 @@ public static class QuoteEndpointExtensions
             if (!ownershipResult.Succeeded)
                 return Results.Forbid();
 
-            var deleted = await repository.DeleteAsync(
+            var callerId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? user.FindFirst("sub")?.Value;
+
+            var deleted = await writeService.DeleteAsync(
                 id,
+                callerId,
                 cancellationToken);
 
             if (!deleted)
                 return Results.NotFound();
-
-            var callerId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                ?? user.FindFirst("sub")?.Value;
-            // CancellationToken.None: see the POST handler above.
-            var evt = QuoteChangedEvent.Deleted(id, callerId, clock.UtcNow);
-            await publisher.PublishAsync(evt, CancellationToken.None);
 
             return Results.NoContent();
         }).RequireAuthorization("can-delete-quotes");

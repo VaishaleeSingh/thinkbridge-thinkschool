@@ -54,6 +54,38 @@ public static class MessagingExtensions
 
         // --- Real Service Bus wiring ---
 
+        // FAIL FAST, HERE, AND NOT VIA ValidateOnStart.
+        //
+        // ServiceBusOptions.RequiredIfEnabled plus ValidateDataAnnotations and
+        // ValidateOnStart were written in Day 19 precisely to stop this
+        // configuration from reaching the SDK. They do not, and Day 20's crash
+        // proof is what exposed it: with ServiceBus:Enabled=true and no
+        // namespace, the hosted-service factory below resolves ServiceBusClient
+        // while the host is starting, which happens before the startup
+        // validator runs. What the operator actually gets is
+        //
+        //   System.ArgumentException: The value '' is not a well-formed Service
+        //   Bus fully qualified namespace. (Parameter 'fullyQualifiedNamespace')
+        //
+        // from forty frames inside Azure.Messaging.ServiceBus -- a stack that
+        // names the SDK's parameter and never mentions the setting to fix.
+        //
+        // The validation was never wrong, it was just never reachable: nobody
+        // had enabled Service Bus WITHOUT a namespace until a script exported
+        // ServiceBus__Enabled=true into a shell with nothing else configured.
+        // An eager check on the line where the decision is made cannot be
+        // outrun by anything, because there is nothing left to race.
+        if (string.IsNullOrWhiteSpace(opts.FullyQualifiedNamespace))
+        {
+            throw new InvalidOperationException(
+                "ServiceBus:Enabled is true but ServiceBus:FullyQualifiedNamespace is empty. "
+                + "Set it to a namespace (e.g. \"quotes-dev.servicebus.windows.net\"), or set "
+                + "ServiceBus:Enabled to false to run with the no-op publisher. "
+                + "Note the environment-variable spelling uses double underscores: "
+                + "ServiceBus__Enabled, ServiceBus__FullyQualifiedNamespace.");
+        }
+
+
         // AddAzureClients registers ServiceBusClient as a singleton and
         // wires DefaultAzureCredential automatically. No connection string.
         services.AddAzureClients(clientBuilder =>

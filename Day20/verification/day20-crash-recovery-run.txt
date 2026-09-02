@@ -1,0 +1,174 @@
+Day 20 -- verification transcripts
+==================================
+
+Console output from the runs the exercise answer is written against, pasted from
+the terminal that produced them on 2026-09-02.
+
+./screenshots/ holds terminal captures of the same verification, taken from a
+LATER run of the same script -- so its counts read Sent: 4 before the kill and
+Sent: 5 after, where the transcript below reads Pending: 1 -> Sent: 1. The
+difference is the database, not the behaviour: this run started from a freshly
+created OutboxMessages table and that one reused rows from earlier runs. In both,
+exactly one row is pending before the kill and none after.
+
+Machine: VAISHALEE-SINGH (Windows), .NET 10.0.10, SQLite provider.
+ServiceBus:Enabled = false, so the relay published through the no-op publisher.
+
+
+-------------------------------------------------------------------------------
+1. Test suite -- Quotes.Tests.Integration
+-------------------------------------------------------------------------------
+
+  Quotes.Tests.Integration test net10.0 succeeded (9.8s)
+Test summary: total: 48, failed: 0, succeeded: 48, skipped: 0, duration: 9.8s
+Build succeeded with 4 warning(s) in 11.9s
+
+(The warnings are pre-existing and unrelated to Day 20: NU1903 on
+SQLitePCLRaw.lib.e_sqlite3 2.1.11, and on SSH.NET 2024.1.0 in the two projects
+that use Testcontainers.)
+
+Whole solution, all seven projects:
+
+Build succeeded with 18 warning(s) in 4.2s
+    0 Error(s)
+
+
+-------------------------------------------------------------------------------
+2. Crash proof -- Day20/scripts/verify-crash-recovery.ps1
+-------------------------------------------------------------------------------
+
+Run with no arguments. quotes.db carries its Day 11 seed data and earlier users,
+but its OutboxMessages table was newly created by the migration, so every outbox
+count below describes this run alone. (The quote id of 21 is the seed's, not a
+sign of an empty database.)
+
+[0/6] Building
+  QuotesApi -> C:\thinkschool\Day7\piece2\QuotesApi\bin\Debug\net10.0\QuotesApi.dll
+Build succeeded.
+    2 Warning(s)
+    0 Error(s)
+
+[1/6] Starting the API with a 120 s poll interval
+      authenticated as outbox-crash-proof@example.com
+
+[2/6] Creating a quote
+      quote id 21 created (HTTP 201)
+
+[3/6] Confirming the event is committed and NOT published
+{
+    "counts":  {
+                   "Pending":  1
+               },
+    "pendingCount":  1,
+    "oldestPendingUtc":  "2026-09-02T05:57:16.7951887",
+    "oldestPendingAgeSeconds":  0.0688049,
+    "parked":  [
+               ]
+}
+
+    ^^ This is the step that carries the argument. The quote is committed (the
+       caller has its 201) and the event is provably NOT published. A run that
+       skipped this and ended at step 6 could not tell recovery apart from a
+       publish that happened on time. The script aborts here if fewer than one
+       row is pending, rather than continuing to a conclusion it has not earned.
+
+[4/6] Killing the process (no graceful shutdown)
+
+    Stop-Process -Force. Not a thrown exception: no unwinding, no finally
+    blocks, no lease release, no flush.
+
+[5/6] Restarting, with a 2 s poll interval. No other action.
+
+    No replay command, no manual fix. The intent survived because it is a row.
+
+[6/6] Waiting for the relay to drain what the dead process left behind
+{
+    "counts":  {
+                   "Sent":  1
+               },
+    "pendingCount":  0,
+    "oldestPendingUtc":  null,
+    "oldestPendingAgeSeconds":  0,
+    "parked":  [
+               ]
+}
+
+PASSED: the event committed before the kill was published after the restart,
+        with no manual intervention.
+
+
+-------------------------------------------------------------------------------
+3. What the migration actually emitted (SQLite)
+-------------------------------------------------------------------------------
+
+From the startup log of the first run after the migration was generated,
+confirming the three properties the design calls load-bearing:
+
+CREATE TABLE "OutboxMessages" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_OutboxMessages" PRIMARY KEY AUTOINCREMENT,
+    "MessageId" TEXT NOT NULL,
+    "EventType" TEXT NOT NULL,
+    "SchemaVersion" TEXT NOT NULL,
+    "Payload" TEXT NOT NULL,
+    "TraceParent" TEXT NULL,
+    "OccurredAtUtc" TEXT NOT NULL,
+    "Status" TEXT NOT NULL,
+    "Attempts" INTEGER NOT NULL,
+    "LastError" TEXT NULL,
+    "LockedUntilUtc" TEXT NULL,
+    "LockOwner" TEXT NULL,
+    "SentAtUtc" TEXT NULL
+);
+CREATE UNIQUE INDEX "IX_OutboxMessages_MessageId" ON "OutboxMessages" ("MessageId");
+CREATE INDEX "IX_OutboxMessages_Pending" ON "OutboxMessages" ("Status", "Id") WHERE [Status] = 'Pending';
+CREATE INDEX "IX_OutboxMessages_SentAtUtc" ON "OutboxMessages" ("SentAtUtc");
+
+  - MessageId is UNIQUE                          as required
+  - IX_OutboxMessages_Pending carries the filter as required
+  - Payload is TEXT, uncapped                    as required
+
+The SQL Server migration was checked against the same three: Id bigint
+IDENTITY, MessageId nvarchar(128) unique, the same filter predicate, and
+Payload nvarchar(max).
+
+
+-------------------------------------------------------------------------------
+4. The claim query, as the relay actually issued it
+-------------------------------------------------------------------------------
+
+Logged by the EF command interceptor on the relay's first pass. This is the
+provider-neutral shortlist read; the conditional UPDATE checked for
+rows-affected follows it and is the actual guarantee.
+
+SELECT "o"."Id", "o"."Attempts", "o"."EventType", "o"."LastError",
+       "o"."LockOwner", "o"."LockedUntilUtc", "o"."MessageId",
+       "o"."OccurredAtUtc", "o"."Payload", "o"."SchemaVersion",
+       "o"."SentAtUtc", "o"."Status", "o"."TraceParent"
+FROM "OutboxMessages" AS "o"
+WHERE "o"."Status" = 'Pending'
+  AND ("o"."LockedUntilUtc" IS NULL OR "o"."LockedUntilUtc" < @now)
+ORDER BY "o"."Id"
+LIMIT @p
+
+And the lease release on graceful shutdown:
+
+UPDATE "OutboxMessages" AS "o"
+SET "LockedUntilUtc" = NULL,
+    "LockOwner" = NULL
+WHERE "o"."LockOwner" = @_owner AND "o"."Status" = 'Pending'
+
+
+-------------------------------------------------------------------------------
+5. Not captured in this run
+-------------------------------------------------------------------------------
+
+  - No real broker. ServiceBus:Enabled was false, so consumer-side dedupe is
+    asserted by tests rather than observed. -WithServiceBus with the emulator
+    would add it.
+  - The SQL Server suite did not run (Docker was down), so the two-relay claim
+    is verified on SQLite only.
+  - No metrics exporter was configured; the gauges were read through
+    /api/outbox/status rather than in a backend.
+  - No live parked row. Producing a Failed row needs a broker that rejects the
+    send; the head-of-line-blocking guarantee is covered by the unit test
+    captured in screenshots/04-parked-row-does-not-block-the-batch.png.

@@ -1,7 +1,9 @@
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using OpenTelemetry;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using QuotesApi.Messaging.Outbox;
 using QuotesApi.Observability;
 
 namespace QuotesApi.Extensions;
@@ -73,6 +75,21 @@ public static class ObservabilityExtensions
             if (!string.IsNullOrWhiteSpace(otlpEndpoint))
                 tracing.AddOtlpExporter(options => options.Endpoint = new Uri(otlpEndpoint));
         });
+
+        // Day 20 -- the outbox relay's instruments.
+        //
+        // A Meter that is not registered by name here emits nothing, silently,
+        // exactly like an unregistered ActivitySource. Registered
+        // unconditionally: without an exporter the MeterProvider still
+        // collects and discards, which costs almost nothing and means the
+        // instruments are live the moment an exporter is configured, rather
+        // than one config change plus one code change away.
+        //
+        // The gauge worth alerting on is outbox.oldest_pending.age. This
+        // design removes "committed change, no message" and introduces "relay
+        // is dead and every write still succeeds silently" -- and that second
+        // failure mode is invisible without this metric.
+        openTelemetry.WithMetrics(metrics => metrics.AddMeter(OutboxMetrics.MeterName));
 
         if (azureMonitorEnabled)
         {

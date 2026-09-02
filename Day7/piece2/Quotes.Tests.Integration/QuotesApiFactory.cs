@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quotes.Tests.Integration.TestDoubles;
@@ -81,6 +82,32 @@ public class QuotesApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         _connection.Open();
+
+        builder.ConfigureAppConfiguration(configuration =>
+        {
+            // Day 20 -- FORCE THE RELAY OFF, whatever the environment says.
+            //
+            // Added as an in-memory configuration source, so it sits ABOVE
+            // environment variables in the precedence chain and cannot be
+            // overridden by them. That is the whole point: a developer who has
+            // exported Outbox__RelayEnabled=true to watch the relay work
+            // locally will, in the same shell, run the tests -- and a test
+            // process inherits its parent's environment. The relay then starts
+            // inside every test host, drains the outbox before the assertions
+            // read it, and (here) hammers the one shared in-memory SQLite
+            // connection concurrently, which fails as "not an error" and
+            // "unable to delete/modify user-function due to active statements"
+            // in tests that have nothing to do with messaging.
+            //
+            // Every outbox test in this project asserts on rows the relay
+            // would consume. Leaving that switch to ambient state means those
+            // assertions are only valid when nobody happens to have exported
+            // the variable -- which is not a test, it is a coincidence.
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Outbox:RelayEnabled"] = "false"
+            });
+        });
 
         builder.ConfigureServices(services =>
         {

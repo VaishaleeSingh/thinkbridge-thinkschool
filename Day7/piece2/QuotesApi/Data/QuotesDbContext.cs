@@ -23,6 +23,10 @@ public class QuotesDbContext : DbContext
 
     // Day 19 -- Service Bus messaging tables
     public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
+
+    // Day 20 -- the transactional outbox. Written in the same transaction as
+    // the domain change it describes; drained by OutboxRelayService.
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<QuoteAuditEntry> QuoteAuditEntries => Set<QuoteAuditEntry>();
     public DbSet<QuoteSearchProjection> QuoteSearchProjections => Set<QuoteSearchProjection>();
 
@@ -190,6 +194,72 @@ public class QuotesDbContext : DbContext
 
             entity.HasIndex(x => x.QuoteId);
             entity.HasIndex(x => x.RecordedAtUtc);
+        });
+
+        // Day 20 -- OutboxMessages.
+        //
+        // Three constraints here are load-bearing, and none of them is
+        // convention:
+        //
+        //   1. MessageId is UNIQUE. It becomes the broker's MessageId, and it
+        //      is a deterministic hash of the event, so two rows carrying it
+        //      would be the same logical event enqueued twice. The database
+        //      says that cannot happen rather than a code path assuming it.
+        //
+        //   2. The (Status, Id) index is FILTERED to pending rows. The claim
+        //      query runs on every tick forever; unfiltered, this index would
+        //      grow with the full history of every event ever published and
+        //      the claim would get slower every day the app stays up. Filtered,
+        //      it is proportional to the backlog, which is normally near zero.
+        //
+        //   3. Payload has no length cap. A capped column that silently
+        //      truncates an event body would produce a message that
+        //      deserialises to garbage on the consumer -- a poison message
+        //      manufactured by the producer's own schema.
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Id).ValueGeneratedOnAdd();
+
+            entity.Property(x => x.MessageId)
+                .IsRequired()
+                .HasMaxLength(128);
+
+            entity.HasIndex(x => x.MessageId).IsUnique();
+
+            entity.Property(x => x.EventType)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(x => x.SchemaVersion)
+                .IsRequired()
+                .HasMaxLength(16);
+
+            entity.Property(x => x.Payload)
+                .IsRequired();
+
+            entity.Property(x => x.TraceParent)
+                .HasMaxLength(64);
+
+            entity.Property(x => x.Status)
+                .IsRequired()
+                .HasMaxLength(16);
+
+            entity.Property(x => x.LockOwner)
+                .HasMaxLength(64);
+
+            entity.Property(x => x.LastError)
+                .HasMaxLength(512);
+
+            // The claim path. HasFilter is provider-specific SQL, and both
+            // providers accept this predicate as written.
+            entity.HasIndex(x => new { x.Status, x.Id })
+                .HasFilter("[Status] = 'Pending'")
+                .HasDatabaseName("IX_OutboxMessages_Pending");
+
+            // The retention sweep.
+            entity.HasIndex(x => x.SentAtUtc);
         });
 
         modelBuilder.Entity<QuoteSearchProjection>(entity =>

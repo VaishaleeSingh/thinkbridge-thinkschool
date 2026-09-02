@@ -49,4 +49,31 @@ internal static class TestEnvironment
     {
         Environment.SetEnvironmentVariable("Jwt__Secret", SigningKey);
     }
+
+    /// <summary>
+    /// Day 20 -- forces the outbox relay off for every host in this assembly.
+    ///
+    /// A test process INHERITS its parent shell's environment, and
+    /// Outbox__RelayEnabled is exactly the variable a developer exports to
+    /// watch the relay work locally. Exported once, it then starts a relay
+    /// inside every WebApplicationFactory host in this run: outbox rows are
+    /// drained before the assertions read them, and against this project's
+    /// single shared in-memory SQLite connection the relay's background
+    /// queries collide with the test's own, failing as "SQLite Error 5: not an
+    /// error" and "unable to delete/modify user-function due to active
+    /// statements" in tests that have nothing to do with messaging.
+    ///
+    /// Cleared here rather than defended against in each factory, because a
+    /// factory added later would not know to. Setting it to "false" rather
+    /// than removing it also beats any appsettings value, which is what makes
+    /// this a guarantee instead of a default.
+    ///
+    /// The relay is exercised deliberately, a pass at a time, by the tests
+    /// that mean to -- see OutboxCrashRecoveryTests.
+    /// </summary>
+    [ModuleInitializer]
+    internal static void DisableOutboxRelayInTests()
+    {
+        Environment.SetEnvironmentVariable("Outbox__RelayEnabled", "false");
+    }
 }
