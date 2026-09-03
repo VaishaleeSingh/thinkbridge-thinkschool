@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using QuotesApi.Caching;
 using QuotesApi.Data;
 using QuotesApi.Messaging;
 using QuotesApi.Messaging.Outbox;
@@ -43,6 +44,7 @@ public sealed class QuoteWriteService(
     IQuoteRepository repository,
     IOutboxWriter outbox,
     IOutboxSignal signal,
+    IQuoteListCache listCache,
     IClock clock,
     ILogger<QuoteWriteService> logger) : IQuoteWriteService
 {
@@ -77,6 +79,13 @@ public sealed class QuoteWriteService(
         // visible yet, and would wake it even for a transaction that then
         // rolled back.
         signal.Notify();
+
+        // Day 21 -- same argument, same place. A cache invalidated inside the
+        // transaction would throw away a valid cache for a write that then
+        // rolled back. A create can shift every subsequent page and changes
+        // Total, so every cached page is stale, which is why this is a
+        // generation bump rather than the removal of one key.
+        await listCache.InvalidateAsync(cancellationToken);
 
         return created;
     }
@@ -114,7 +123,10 @@ public sealed class QuoteWriteService(
             cancellationToken);
 
         if (updated is not null)
+        {
             signal.Notify();
+            await listCache.InvalidateAsync(cancellationToken);
+        }
 
         return updated;
     }
@@ -145,7 +157,10 @@ public sealed class QuoteWriteService(
             cancellationToken);
 
         if (deleted)
+        {
             signal.Notify();
+            await listCache.InvalidateAsync(cancellationToken);
+        }
 
         return deleted;
     }

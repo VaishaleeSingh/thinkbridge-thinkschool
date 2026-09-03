@@ -22,7 +22,18 @@ public class QuoteRepository : IQuoteRepository
         int size,
         CancellationToken cancellationToken)
     {
-        var query = _db.Quotes.AsNoTracking();
+        // Day 21 -- TagWith emits a SQL comment ahead of the statement, and
+        // DbCommandCounterInterceptor classifies commands by that tag.
+        //
+        // Tagging rather than matching the generated SQL is the point. An
+        // interceptor looking for "COUNT(*)" and "LIMIT" would work today and
+        // break silently the first time this query changes -- by reclassifying
+        // these commands as "other", which makes the cached run look better
+        // than it is. The tag only changes when someone means it to.
+        //
+        // BOTH statements carry it, because a page read costs two round trips
+        // and the measurement is of database load, not of query count.
+        var query = _db.Quotes.AsNoTracking().TagWith(Caching.CacheKeys.QuoteListQueryTag);
 
         var total = await query.CountAsync(cancellationToken);
 

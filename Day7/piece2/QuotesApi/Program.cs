@@ -193,6 +193,11 @@ app.MapQuotesHealthChecks();
 app.MapQuoteEndpoints();
 app.MapCollectionEndpoints();
 
+// Day 21 -- GET /api/cache/stats. Mapped in every environment, for the same
+// reason as the outbox status endpoint below: it is what an operator reads when
+// they suspect the cache has stopped helping.
+app.MapCacheEndpoints();
+
 // Day 20 -- GET /api/outbox/status. Mapped in every environment, unlike the
 // diagnostics routes below: this is what an operator reads when they suspect
 // the relay has stopped, and that suspicion does not arise in Development.

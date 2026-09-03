@@ -1,0 +1,270 @@
+Day 21 measurement -- 2026-09-03 14:26:10Z
+  load: 5000 requests, 100 concurrent, 5 page(s) of size 20, seed 2000
+  redis: none (L1 only)
+
+[0/3] Building
+
+=== Cache OFF (baseline) ===
+  seeding 2000 quotes...
+  rows in Quotes: 2020
+  load: 5000 requests, 100 concurrent, over 5 page(s)
+Bombarding http://localhost:5080/api/quotes?page=1&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 42 / 1000    4.20% 209/s 00m04s
+ 129 / 1000   12.90% 321/s 00m02s
+ 209 / 1000   20.90% 347/s 00m02s
+ 291 / 1000   29.10% 363/s 00m01s
+ 379 / 1000   37.90% 378/s 00m01s
+ 479 / 1000   47.90% 398/s 00m01s
+ 605 / 1000   60.50% 431/s
+ 690 / 1000   69.00% 430/s
+ 794 / 1000   79.40% 440/s
+ 873 / 1000   87.30% 435/s
+ 1000 / 1000  100.00% 453/s
+ 1000 / 1000  100.00% 453/s 2s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec       469.19     723.60    4069.51
+  Latency      208.49ms    41.35ms   473.25ms
+  Latency Distribution
+     50%   191.38ms
+     75%   257.94ms
+     90%   296.72ms
+     95%   324.23ms
+     99%   366.20ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:     1.96MB/s
+Bombarding http://localhost:5080/api/quotes?page=2&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 40 / 1000    4.00% 199/s 00m04s
+ 119 / 1000   11.90% 296/s 00m02s
+ 188 / 1000   18.80% 312/s 00m02s
+ 245 / 1000   24.50% 305/s 00m02s
+ 332 / 1000   33.20% 331/s 00m02s
+ 413 / 1000   41.30% 343/s 00m01s
+ 499 / 1000   49.90% 355/s 00m01s
+ 589 / 1000   58.90% 367/s 00m01s
+ 699 / 1000   69.90% 387/s
+ 785 / 1000   78.50% 392/s
+ 877 / 1000   87.70% 398/s
+ 1000 / 1000  100.00% 416/s
+ 1000 / 1000  100.00% 416/s 2s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec       444.49     542.79    3195.91
+  Latency      232.40ms    45.08ms   449.51ms
+  Latency Distribution
+     50%   222.83ms
+     75%   267.40ms
+     90%   323.55ms
+     95%   375.19ms
+     99%   404.80ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:     3.09MB/s
+Bombarding http://localhost:5080/api/quotes?page=3&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 48 / 1000    4.80% 235/s 00m04s
+ 118 / 1000   11.80% 292/s 00m03s
+ 215 / 1000   21.50% 355/s 00m02s
+ 320 / 1000   32.00% 397/s 00m01s
+ 413 / 1000   41.30% 410/s 00m01s
+ 500 / 1000   50.00% 414/s 00m01s
+ 586 / 1000   58.60% 416/s
+ 720 / 1000   72.00% 448/s
+ 797 / 1000   79.70% 441/s
+ 887 / 1000   88.70% 442/s
+ 1000 / 1000  100.00% 453/s
+ 1000 / 1000  100.00% 453/s 2s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec       464.77     542.95    3045.77
+  Latency      212.04ms    37.10ms   404.31ms
+  Latency Distribution
+     50%   206.18ms
+     75%   250.44ms
+     90%   280.60ms
+     95%   308.57ms
+     99%   332.58ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:     3.39MB/s
+Bombarding http://localhost:5080/api/quotes?page=4&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 50 / 1000    5.00% 248/s 00m03s
+ 108 / 1000   10.80% 269/s 00m03s
+ 196 / 1000   19.60% 325/s 00m02s
+ 327 / 1000   32.70% 407/s 00m01s
+ 431 / 1000   43.10% 429/s 00m01s
+ 524 / 1000   52.40% 435/s 00m01s
+ 598 / 1000   59.80% 426/s
+ 698 / 1000   69.80% 435/s
+ 792 / 1000   79.20% 439/s
+ 880 / 1000   88.00% 439/s
+ 1000 / 1000  100.00% 453/s
+ 1000 / 1000  100.00% 453/s 2s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec       471.56     551.80    2588.69
+  Latency      208.03ms    38.18ms   480.25ms
+  Latency Distribution
+     50%   199.92ms
+     75%   237.21ms
+     90%   274.00ms
+     95%   306.71ms
+     99%   353.60ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:     3.43MB/s
+Bombarding http://localhost:5080/api/quotes?page=5&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 52 / 1000    5.20% 258/s 00m03s
+ 133 / 1000   13.30% 331/s 00m02s
+ 220 / 1000   22.00% 365/s 00m02s
+ 358 / 1000   35.80% 446/s 00m01s
+ 450 / 1000   45.00% 449/s 00m01s
+ 545 / 1000   54.50% 453/s 00m01s
+ 661 / 1000   66.10% 471/s
+ 746 / 1000   74.60% 465/s
+ 881 / 1000   88.10% 488/s
+ 1000 / 1000  100.00% 498/s
+ 1000 / 1000  100.00% 498/s 2s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec       505.11     529.23    2433.15
+  Latency      194.23ms    33.12ms   363.70ms
+  Latency Distribution
+     50%   190.26ms
+     75%   227.80ms
+     90%   250.15ms
+     95%   271.66ms
+     99%   317.25ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:     3.70MB/s
+
+=== Cache ON ===
+  seeding 2000 quotes...
+  rows in Quotes: 2020
+  load: 5000 requests, 100 concurrent, over 5 page(s)
+Bombarding http://localhost:5080/api/quotes?page=1&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 1000 / 1000  100.00% 4973/s
+ 1000 / 1000  100.00% 4973/s 0s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec      6163.69    6492.41   16703.29
+  Latency       17.51ms    10.04ms   124.60ms
+  Latency Distribution
+     50%     6.67ms
+     75%     9.80ms
+     90%    23.49ms
+     95%   113.73ms
+     99%   117.01ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:    23.84MB/s
+Bombarding http://localhost:5080/api/quotes?page=2&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 1000 / 1000  100.00% 4979/s
+ 1000 / 1000  100.00% 4979/s 0s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec     23456.35   36617.76   97000.98
+  Latency       10.22ms     7.85ms    78.93ms
+  Latency Distribution
+     50%     4.77ms
+     75%     6.54ms
+     90%    24.16ms
+     95%    50.85ms
+     99%    77.89ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:    69.11MB/s
+Bombarding http://localhost:5080/api/quotes?page=3&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 1000 / 1000  100.00% 4955/s
+ 1000 / 1000  100.00% 4955/s 0s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec      7481.74    6024.79   15829.92
+  Latency       12.33ms     4.35ms    47.46ms
+  Latency Distribution
+     50%     7.09ms
+     75%     7.78ms
+     90%    32.02ms
+     95%    45.01ms
+     99%    46.21ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:    58.18MB/s
+Bombarding http://localhost:5080/api/quotes?page=4&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 1000 / 1000  100.00% 4990/s
+ 1000 / 1000  100.00% 4990/s 0s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec      9883.79    9463.21   26056.41
+  Latency       11.54ms     4.24ms    60.26ms
+  Latency Distribution
+     50%     7.07ms
+     75%    10.35ms
+     90%    18.10ms
+     95%    51.65ms
+     99%    52.21ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:    62.97MB/s
+Bombarding http://localhost:5080/api/quotes?page=5&size=20 with 1000 request(s) using 100 connection(s)
+
+ 0 / 1000    0.00%
+ 1000 / 1000  100.00% 4956/s
+ 1000 / 1000  100.00% 4956/s 0s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec     13511.28   13380.58   28311.80
+  Latency        7.79ms     3.63ms    39.01ms
+  Latency Distribution
+     50%     4.26ms
+     75%     5.27ms
+     90%     9.48ms
+     95%    37.86ms
+     99%    38.43ms
+  HTTP codes:
+    1xx - 0, 2xx - 1000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:    90.45MB/s
+
+================ RESULT ================
+
+Label                Rows Requests Hits Misses Bypasses DistinctKeys HitRatio DbCommands
+-----                ---- -------- ---- ------ -------- ------------ -------- ----------
+Cache OFF (baseline) 2020     5000    0   5000        0            0        0      10000
+Cache ON             2020     5000 4995      5        0            5    0.999         10
+
+
+
+DB commands (quotes.list): 10000 -> 10  (99.9% fewer)
+Hit rate: 99.90% over 5 distinct key(s)
+
+Read the key count next to the hit rate. A high ratio over one key
+is deduplication, not evidence about a real traffic mix.

@@ -123,8 +123,25 @@ function Start-Api {
     $outLog = Join-Path $env:TEMP "outbox-api-$stamp.out.log"
     $errLog = Join-Path $env:TEMP "outbox-api-$stamp.err.log"
 
+    # LAUNCH THE DLL, NOT `dotnet run`.
+    #
+    # `dotnet run` spawns the app as a CHILD process (QuotesApi.exe), so the
+    # handle Start-Process returns is the launcher, not the application.
+    # Stop-Process then kills the launcher and leaves the app running: a
+    # QuotesApi.exe survived one of these runs holding a lock on
+    # bin\Debug\net10.0\QuotesApi.exe, and the next `dotnet build` failed with
+    # MSB3027 "the file is locked by: QuotesApi (9260)".
+    #
+    # Running the DLL directly makes the returned handle the application
+    # itself, so stopping it stops the thing that was started. For a script
+    # whose job is to start and kill processes deterministically, that is not
+    # tidiness -- it is the difference between killing what you meant to and
+    # killing its parent.
+    $dll = Join-Path $ApiProject 'bin/Debug/net10.0/QuotesApi.dll'
+    if (-not (Test-Path $dll)) { throw "Not built: $dll. Run dotnet build first." }
+
     $process = Start-Process dotnet `
-        -ArgumentList @('run', '--project', $ApiProject, '--no-launch-profile', '--no-build') `
+        -ArgumentList @($dll) `
         -WorkingDirectory $ApiProject `
         -RedirectStandardOutput $outLog `
         -RedirectStandardError $errLog `
