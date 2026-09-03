@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using QuotesApi.Authorization;
 using QuotesApi.Models;
+using QuotesApi.Caching;
 using QuotesApi.Repositories;
 using QuotesApi.Services;
 using System.Security.Claims;
@@ -51,7 +52,7 @@ public static class QuoteEndpointExtensions
         group.MapGet("/", async (
             int page,
             int size,
-            IQuoteRepository repository,
+            IQuoteListCache cache,
             // IOptionsSnapshot, not IOptions, and here that IS the right
             // choice -- unlike JwtOptions (see AuthService for why that one
             // must stay fixed for the process lifetime). A page-size
@@ -75,18 +76,26 @@ public static class QuoteEndpointExtensions
                 });
             }
 
-            var (items, total) = await repository.GetPagedAsync(
-                page,
-                size,
-                cancellationToken);
+            // Day 21 -- read through the cache.
+            //
+            // Note the ORDER: the page/size validation above runs first, and
+            // that is load-bearing rather than tidy. Validating after would let
+            // an unbounded `size` become an unbounded number of cache keys,
+            // which is memory exhaustion dressed as a cache. `page` is bounded
+            // separately, by CacheOptions.MaxCachedPage -- the endpoint accepts
+            // any page, and the cache declines to store the deep ones.
+            //
+            // There is no `if (cacheEnabled)` here on purpose. Cache:Enabled
+            // false resolves PassThroughQuoteListCache, so both paths run the
+            // same projection and cannot drift -- which is what lets a test
+            // assert the cached response is byte-identical to the uncached one.
+            var result = await cache.GetPageAsync(page, size, cancellationToken);
 
-            return Results.Ok(new
-            {
-                page,
-                size,
-                total,
-                items
-            });
+            // The shape is deliberately unchanged from before Day 21:
+            // QuoteListPage's members are (Page, Size, Total, Items) and
+            // QuoteListItem mirrors Quote's five public properties in the same
+            // order, so the serialised response is identical.
+            return Results.Ok(result);
         }).RequireAuthorization("can-read-quotes");
 
         // POST /api/quotes — create a new quote.

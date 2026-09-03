@@ -1,0 +1,147 @@
+Day 21 -- measurement transcript
+================================
+
+Derived tables and commentary for the run captured in raw-load-test.txt
+(2026-09-03 14:26:10Z). THAT file is the primary evidence -- unedited console
+output including every bombardier block and the RESULT table. This file only
+reads it.
+
+An earlier attempt at capturing it lost the RESULT table: the script printed it
+with Out-Host, which writes to the console and not to the success stream, so
+`*>&1 | Tee-Object` captured every bombardier block and silently dropped the one
+row carrying the query counts. Evidence missing precisely because it went to the
+screen is the worst kind of missing. The script now uses Out-String |
+Write-Output, and prints its own configuration header so the raw file says which
+run it is.
+
+Machine: Windows, .NET 10.0.10, SQLite provider, L1 only (no Redis).
+Load: bombardier, 5000 requests, 100 concurrent connections, spread over 5
+pages of size 20. Identical load and identical data for both runs; the ONLY
+difference between them is Cache:Enabled.
+
+Both runs report "rows in Quotes: 2020". That number is printed because an
+earlier version of the script did not delete quotes.db between runs, and
+/api/diagnostics/seed APPENDS -- so the baseline read 2,020 rows and the cached
+run read 4,020. The direction of that error mattered: a bigger table slows the
+UNCACHED path and barely touches the cached one, so the bug flattered the
+cache. The script now deletes the database before each run and refuses to
+report at all if the two row counts differ.
+
+
+-------------------------------------------------------------------------------
+1. RESULT table
+-------------------------------------------------------------------------------
+
+Label                Rows Requests Hits Misses Bypasses DistinctKeys HitRatio DbCommands
+-----                ---- -------- ---- ------ -------- ------------ -------- ----------
+Cache OFF (baseline) 2020     5000    0   5000        0            0        0      10000
+Cache ON             2020     5000 4995      5        0            5    0.999         10
+
+DB commands (quotes.list): 10000 -> 10  (99.9% fewer)
+Hit rate: 99.90% over 5 distinct key(s)
+
+
+-------------------------------------------------------------------------------
+2. The number that answers the task
+-------------------------------------------------------------------------------
+
+MISSES = 5, over 5 distinct keys, at 100 concurrent requests per key.
+
+That is one database load per key and not one per request: 1000 concurrent
+callers for page 1 produced ONE factory invocation. Without stampede
+protection the same load produces 1000. This is the whole exercise, and it is
+visible in a single number rather than argued for.
+
+DB commands per page read is 2 -- a COUNT(*) and a paged SELECT (see
+QuoteRepository.GetPagedAsync). So:
+
+  baseline : 5000 requests x 2 commands              = 10,000
+  cached   :    5 misses   x 2 commands              =      10
+
+A 1000:1 reduction, which is exactly the concurrency per key. Not a
+coincidence: it IS the concurrency, which is what makes this a measurement of
+stampede protection rather than of caching in general.
+
+
+-------------------------------------------------------------------------------
+3. Latency and DB queries/sec, per page
+-------------------------------------------------------------------------------
+
+Derived from the bombardier blocks in raw-load-test.txt. One page read is two
+queries -- a COUNT(*) and a paged SELECT -- so DB queries/sec is the achieved
+request rate x 2 while the cache is off.
+
+           Cache OFF                          Cache ON
+page  req/s  DB q/s   p50       p99       req/s  p50      p99
+----  -----  ------   --------  --------  -----  -------  --------
+1       453     906   191.38ms  366.20ms   4973   6.67ms  117.01ms
+2       416     832   222.83ms  404.80ms   4979   4.77ms   77.89ms
+3       453     906   206.18ms  332.58ms   4955   7.09ms   46.21ms
+4       453     906   199.92ms  353.60ms   4990   7.07ms   52.21ms
+5       498     996   190.26ms  317.25ms   4956   4.26ms   38.43ms
+
+Sustained DB load, cache off:  ~830-1,000 queries/sec
+Sustained DB load, cache on:   0, after 5 cold misses (10 queries total)
+
+All 10,000 responses across both runs were 2xx. No errors in either run.
+
+THE RIGHT-HAND COLUMN IS NOT A RATE. With the cache on the database is touched
+five times in the entire run -- once per key -- and then never again however
+many requests arrive. Queries/sec does not fall from ~900 to a smaller number;
+it decouples from the request rate entirely. Averaging 10 queries into a
+"per second" figure would produce a number that means nothing, which is why the
+table reports the count instead.
+
+TWO THINGS IN THE LATENCY COLUMNS WORTH READING RATHER THAN SKIMMING:
+
+  - The cached p99 (38-117ms) is far worse than the cached p50 (4-7ms), and
+    that gap IS the cold miss. Whichever callers arrive first wait on the one
+    factory invocation while the other ~995 are served from memory. A cache does
+    not remove the first read; it stops the first read happening a thousand
+    times, and the p99 is where that first read shows up.
+
+  - Page 1 has the worst cached p99 (117ms) and the fastest ramp-up in the
+    uncached progress output (209/s climbing to 453/s), both of which are
+    process warm-up rather than anything about page 1. Note that its uncached
+    p99 is NOT the worst -- page 2's is (404.80ms). An earlier run of this
+    script did show page 1 worst on both, and reporting that as a rule would
+    have been reading a pattern into one sample.
+
+-------------------------------------------------------------------------------
+4. What this run does NOT show
+-------------------------------------------------------------------------------
+
+  - NO REDIS IN THIS RUN. It is L1 only. Stampede protection is an in-process
+    property so the headline number is unaffected, but these load figures say
+    nothing about Redis.
+
+    The L2 half is proved separately, by Quotes.Tests.Integration.Redis
+    (Testcontainers, 3/3 passing): two hosts, one Redis, and deliberately
+    DIFFERENT databases, so that host B answering with host A's payload -- a
+    payload its own database could not have produced -- can only mean the entry
+    came from Redis. That suite also asserts a write on one host invalidates the
+    other's entry, and that the key in Redis is exactly
+    quotes:list:v1:g0:p1:s20.
+
+    Graceful degradation is covered without Docker by RedisUnavailableTests,
+    which points the cache at a closed port.
+
+  - THE LATENCY DROP IS FLATTERED BY THE DATABASE BEING LOCAL SQLITE.
+    A local file read is already fast; the ~30-45x p50 improvement here is
+    mostly the removal of EF materialisation and JSON work, not of a network
+    hop.
+    Against Azure SQL or any database across a network the DB-load number
+    would look the same and the latency number would look much better. The
+    honest headline for this exercise is therefore the command count, not the
+    milliseconds.
+
+  - ONE PROCESS. Deduplication is per instance, so N instances on a cold key
+    give up to N loads, not one.
+
+  - 5 KEYS IS A FRIENDLY WORKLOAD. Real traffic spreads over more keys and
+    includes writes that invalidate. 99.9% over 5 keys is a statement about
+    deduplication, not a forecast of production hit rate. Running the script
+    with -Pages 1 would report a prettier number and mean less.
+
+  - NOTHING WAS TUNED. Expiration, LocalCacheExpiration and MaxCachedPage are
+    reasoned defaults, not measured ones.

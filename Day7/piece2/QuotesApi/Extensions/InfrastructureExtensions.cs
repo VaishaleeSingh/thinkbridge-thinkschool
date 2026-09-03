@@ -44,8 +44,15 @@ public static class InfrastructureExtensions
             || defaultConnection.Contains("Server=", StringComparison.OrdinalIgnoreCase)
             || defaultConnection.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase);
 
-        services.AddDbContext<QuotesDbContext>(options =>
+        // Day 21 -- the (sp, options) overload, so the DB-command counter can
+        // be attached. An interceptor that is silently absent reports zero
+        // commands, which is indistinguishable from a perfect cache: the one
+        // wrong answer this measurement must not be able to give.
+        services.AddDbContext<QuotesDbContext>((serviceProvider, options) =>
         {
+            options.AddInterceptors(
+                serviceProvider.GetRequiredService<Observability.DbCommandCounterInterceptor>());
+
             if (useSqlServer)
             {
                 options.UseSqlServer(defaultConnection);
@@ -334,6 +341,13 @@ public static class InfrastructureExtensions
         // Day 19 -- Service Bus topic publisher + competing-consumer worker.
         // Enabled:false by default so unrelated tests never attempt AMQP.
         services.AddMessaging(configuration);
+
+        // Day 21 -- the read-through cache and its instruments. Registered
+        // BEFORE the DbContext is first resolved is not required, but it must
+        // be registered before AddOutbox so the write service can take
+        // IQuoteListCache. The metrics and the interceptor register whether or
+        // not caching is enabled -- see CachingExtensions.
+        services.AddCaching(configuration);
 
         // Day 20 -- the transactional outbox. Registered AFTER AddMessaging
         // because the relay resolves the IQuoteEventPublisher that call

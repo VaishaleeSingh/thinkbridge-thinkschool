@@ -28,5 +28,10 @@ internal static class TestEnvironment
     internal static void DisableOutboxRelayInTests()
     {
         Environment.SetEnvironmentVariable("Outbox__RelayEnabled", "false");
+
+        // Day 21 -- and the cache, for the same reason. Cache__Enabled=true in
+        // the shell would make list assertions depend on what a previous test
+        // cached.
+        Environment.SetEnvironmentVariable("Cache__Enabled", "false");
     }
 }

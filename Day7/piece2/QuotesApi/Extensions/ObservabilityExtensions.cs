@@ -3,6 +3,7 @@ using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using QuotesApi.Caching;
 using QuotesApi.Messaging.Outbox;
 using QuotesApi.Observability;
 
@@ -89,7 +90,15 @@ public static class ObservabilityExtensions
         // design removes "committed change, no message" and introduces "relay
         // is dead and every write still succeeds silently" -- and that second
         // failure mode is invisible without this metric.
-        openTelemetry.WithMetrics(metrics => metrics.AddMeter(OutboxMetrics.MeterName));
+        openTelemetry.WithMetrics(metrics => metrics
+            .AddMeter(OutboxMetrics.MeterName)
+
+            // Day 21 -- the cache's own counters, and the DB-command counter
+            // they are compared against. Both, because neither answers the
+            // other's question: a hit rate describes the cache, and only
+            // db.commands describes the database.
+            .AddMeter(CacheMetrics.MeterName)
+            .AddMeter(DbCommandCounterInterceptor.MeterName));
 
         if (azureMonitorEnabled)
         {

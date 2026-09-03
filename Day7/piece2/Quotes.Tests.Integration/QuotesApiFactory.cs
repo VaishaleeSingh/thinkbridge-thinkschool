@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Quotes.Tests.Integration.TestDoubles;
 using QuotesApi.Data;
+using QuotesApi.Observability;
 using QuotesApi.Services;
 
 namespace Quotes.Tests.Integration;
@@ -85,19 +86,29 @@ public class QuotesApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureAppConfiguration(configuration =>
         {
-            // Day 20 -- FORCE THE RELAY OFF, whatever the environment says.
+            // Belt-and-braces only. THE ENVIRONMENT VARIABLE IN
+            // TestEnvironment IS WHAT ACTUALLY ENFORCES THIS.
             //
-            // Added as an in-memory configuration source, so it sits ABOVE
-            // environment variables in the precedence chain and cannot be
-            // overridden by them. That is the whole point: a developer who has
-            // exported Outbox__RelayEnabled=true to watch the relay work
-            // locally will, in the same shell, run the tests -- and a test
-            // process inherits its parent's environment. The relay then starts
-            // inside every test host, drains the outbox before the assertions
-            // read it, and (here) hammers the one shared in-memory SQLite
-            // connection concurrently, which fails as "not an error" and
-            // "unable to delete/modify user-function due to active statements"
-            // in tests that have nothing to do with messaging.
+            // Day 20 added this claiming it "sits above environment variables
+            // in the precedence chain". Day 21 disproved that: a
+            // WebApplicationFactory's ConfigureAppConfiguration callbacks are
+            // applied during builder.Build(), while Program.cs reads
+            // configuration when it calls AddInfrastructure(builder.Configuration)
+            // -- earlier. So any switch read at REGISTRATION time (which
+            // Outbox:RelayEnabled and Cache:Enabled both are) never sees these
+            // values. It was the [ModuleInitializer] environment variable
+            // doing the work all along.
+            //
+            // Left in place because it is harmless and does affect anything
+            // read later through IOptions, but it is not the guarantee. The
+            // reason the guarantee is needed at all: a test process inherits
+            // its parent shell's environment, so a developer who exported
+            // Outbox__RelayEnabled=true to watch the relay locally would start
+            // a relay inside every test host -- draining the outbox before
+            // assertions read it, and hammering the one shared in-memory
+            // SQLite connection, which fails as "not an error" and "unable to
+            // delete/modify user-function due to active statements" in tests
+            // that have nothing to do with messaging.
             //
             // Every outbox test in this project asserts on rows the relay
             // would consume. Leaving that switch to ambient state means those
@@ -105,7 +116,20 @@ public class QuotesApiFactory : WebApplicationFactory<Program>
             // the variable -- which is not a test, it is a coincidence.
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Outbox:RelayEnabled"] = "false"
+                ["Outbox:RelayEnabled"] = "false",
+
+                // Day 21 -- same argument, and if anything a sharper one. A
+                // cache switched on underneath these tests would make them
+                // pass or fail by EXECUTION ORDER: a quote created in one test
+                // would be absent from a list served out of another test's
+                // cached page. Pinned here, above environment variables, so
+                // exporting Cache__Enabled=true to try the cache locally
+                // cannot leak into a test run.
+                //
+                // The cache tests override this by adding their own
+                // configuration source AFTER calling base.ConfigureWebHost --
+                // see CachedQuotesApiFactory.
+                ["Cache:Enabled"] = "false"
             });
         });
 
@@ -134,8 +158,18 @@ public class QuotesApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<DbContextOptions<QuotesDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<QuotesDbContext>>();
 
-            services.AddDbContext<QuotesDbContext>(options =>
-                options.UseSqlite(_connection));
+            services.AddDbContext<QuotesDbContext>((serviceProvider, options) => options
+                .UseSqlite(_connection)
+
+                // Day 21 -- this factory REPLACES the app's DbContext
+                // registration, which means it also drops the interceptor
+                // attached there. Re-attaching it is not optional: without it
+                // DbCommandCounterInterceptor reports zero commands, and zero
+                // reads exactly like a perfect cache. The one wrong answer the
+                // Day 21 measurement must not be able to give is the
+                // flattering one.
+                .AddInterceptors(
+                    serviceProvider.GetRequiredService<DbCommandCounterInterceptor>()));
 
             // Swap the clock: remove the real SystemClock singleton and
             // replace it with our fixed FakeClock, so any timestamp the

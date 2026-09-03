@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- These tests require Docker (a Redis container), the same as the
+         SqlServer and ServiceBus suites, and like them this project IS in
+         QuotesApi.slnx. A test project outside the solution is never compiled
+         by CI or by a solution level test run, so it rots silently, which is
+         worse than an honest red test on a machine with no Docker daemon.
+
+         Run this suite alone with:
+           dotnet test Quotes.Tests.Integration.Redis
+         To skip it in a solution level run, pass a test filter expression of
+         FullyQualifiedName!~Redis.
+
+         WHAT THIS SUITE IS FOR, and what it deliberately is not: the Day 21
+         headline (stampede protection, and the drop in database commands) is
+         an in process property and is measured without Docker in
+         Quotes.Tests.Integration. This project exists for the one claim that
+         cannot be made without a real distributed cache, namely that L2 is
+         genuinely shared between instances.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.1.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\QuotesApi\QuotesApi.csproj" />
+  </ItemGroup>
+
+</Project>
