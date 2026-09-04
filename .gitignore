@@ -38,3 +38,11 @@ local.settings.json
 # Day 17 BFF build output
 Day17/api-bff/publish/
 Day17/api-bff/deploy.zip
+
+# Day 22 -- the API's own console from prove-circuit.ps1. Written on every run
+# and useful while diagnosing a run that will not start, but it is EF Core
+# Debug noise at ~360KB a time: 'Closing data reader' lines are weight, not
+# evidence. The resilience-relevant lines are extracted into
+# day22-api-resilience-lines.txt, which is committed.
+Day22/verification/day22-api-stdout.log
+Day22/verification/day22-api-stderr.log

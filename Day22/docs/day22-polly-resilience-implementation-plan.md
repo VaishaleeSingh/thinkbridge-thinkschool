@@ -86,19 +86,48 @@ mapped — worth having, and it is the one item from the plan's test list that i
 outstanding. Everything the proof actually rests on is in the unit suite, which
 is where the plan said the primary evidence would live.
 
-**9. Nothing here has been compiled or run.** There is no .NET SDK on either
-machine this was written from and no route to nuget.org, so the code is
-unverified by a compiler and the suite is unrun. Three things are the likely
-first failures, in order of probability:
+**9. It compiled and the suite is green on the first run.** 287 tests, zero
+failures, with Docker running for the three container-backed projects:
 
-| Risk | If it fails |
+| Project | Result |
 |---|---|
-| `ResilienceContext.GetRequestMessage()` — the accessor the gate uses for exception outcomes | Drop to `args.Outcome.Result?.RequestMessage` alone, accepting that a timed-out GET is then not retried, or register a second `no-retry` pipeline as the plan's fallback said |
-| `AddRateLimiter` / `HttpRateLimiterStrategyOptions` not resolving | `dotnet add QuotesApi package Polly.RateLimiting` — the plan flagged this as needing verification and it was not verifiable here |
-| `MinimumThroughput`/`SamplingDuration` lower bounds rejecting the test values | The test durations are already at Polly's documented 500ms floor; raise them and the tests get slower, not wrong |
+| `Quotes.Tests.Unit` (includes all ~38 new Day 22 tests) | 191 / 191 |
+| `QuotesApi.Tests` | 23 / 23 |
+| `Quotes.Tests.Integration` | 60 / 60 |
+| `Quotes.Tests.Integration.Redis` | 3 / 3 |
+| `Quotes.Tests.Integration.SqlServer` | 5 / 5 |
+| `Quotes.Tests.Integration.ServiceBus` | 5 / 5 |
 
-The measurement protocol, the acceptance criteria and the "what this will not
-prove" section below stand as written. None of them has been executed.
+Without Docker the run is 274 / 287, and the 13 failures are all
+`ArgumentException: Docker is either not running or misconfigured` raised in
+`RedisFixture`, `ServiceBusEmulatorFixture` and `MsSqlContainerFixture`
+constructors — Day 13 / 19 / 21 fixtures that fail identically on `main`.
+Acceptance criterion 5 holds: nothing added here needs Docker, and the whole
+circuit-breaker proof runs in the Unit project.
+
+**The number that matters most is the 60 / 60 and the Day 5 tests passing
+unmodified.** That was the stated contract on the options refactor: if binding
+the policy to configuration had changed the policy, `ResilienceExtensionsTests`
+would have moved. It did not, so the defaults do reproduce Day 5's inline
+constants — and `Defaults_MatchTheDay5Policy_AndAreValid` asserts that directly
+rather than leaving it to be checked by reading two files side by side.
+
+Both risks this plan flagged as unverifiable from the sandbox resolved in
+favour of the design as written, and neither fallback was needed:
+
+| Flagged risk | Outcome |
+|---|---|
+| `ResilienceContext.GetRequestMessage()` might not exist on the pinned version, forcing a `no-retry` second pipeline | It exists on `Microsoft.Extensions.Http.Resilience` 10.9.0. The gate reads the request from the context on exception outcomes as designed. |
+| `AddRateLimiter` / `HttpRateLimiterStrategyOptions` might need `Polly.RateLimiting` added explicitly | It arrives transitively with `Microsoft.Extensions.Http.Resilience`. No package was added. |
+| Polly's 500ms floors might reject the test durations | The test values (2s sampling, 1s break) sit above the floor and the lifecycle test runs in roughly two seconds. |
+
+The **live run** has since been executed in both modes and is recorded in
+`Day22/verification/`. It cost three attempts to get the harness right, and each
+failure was a fact about the caller rather than about the pipeline: an `http://`
+authority that JwtBearer refuses to initialise with, then a classifier that read
+`BrokenCircuitException` as "rejected" when Polly also raises it for a failed
+half-open trial. The numbers, and what that second mistake teaches about
+choosing an instrument, are in the submission.
 
 ## Branch base
 

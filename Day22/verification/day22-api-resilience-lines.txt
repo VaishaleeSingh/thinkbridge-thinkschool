@@ -1,0 +1,28 @@
+   at Microsoft.Extensions.Http.Resilience.ResilienceHandler.<>c.<<SendAsync>b__3_0>d.MoveNext()
+   at Microsoft.Extensions.Http.Resilience.ResilienceHandler.SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+   at Polly.Timeout.TimeoutResilienceStrategy.ExecuteCore[TResult,TState](Func`3 callback, ResilienceContext context, TState state)
+[15:38:49 INF] [TraceId:] Hosting environment: Development
+[15:38:49 INF] [TraceId:] Now listening on: http://127.0.0.1:5185
+[15:38:52 ERR] [TraceId:58e72b3bb81b316fad11e59a8a8711e2] Resilience event occurred. EventName: 'OnTimeout', Source: 'entra-id-entra-id//attempt-timeout', Operation Key: 'null', Result: 'null'
+[15:38:52 WRN] [TraceId:58e72b3bb81b316fad11e59a8a8711e2] Entra ID metadata request failed, retrying. Attempt 1 of 1, waiting 00:00:00. Outcome: The operation didn't complete within the allowed timeout of '00:00:02'.
+[15:38:52 WRN] [TraceId:58e72b3bb81b316fad11e59a8a8711e2] Resilience event occurred. EventName: 'OnRetry', Source: 'entra-id-entra-id//retry', Operation Key: 'null', Result: 'The operation didn't complete within the allowed timeout of '00:00:02'.'
+[15:38:54 ERR] [TraceId:58e72b3bb81b316fad11e59a8a8711e2] Resilience event occurred. EventName: 'OnTimeout', Source: 'entra-id-entra-id//attempt-timeout', Operation Key: 'null', Result: 'null'
+[15:38:56 ERR] [TraceId:93257524cadacee8d7bee0d201ff5fc5] Resilience event occurred. EventName: 'OnTimeout', Source: 'entra-id-entra-id//attempt-timeout', Operation Key: 'null', Result: 'null'
+[15:38:56 WRN] [TraceId:93257524cadacee8d7bee0d201ff5fc5] Entra ID metadata request failed, retrying. Attempt 1 of 1, waiting 00:00:00. Outcome: The operation didn't complete within the allowed timeout of '00:00:02'.
+[15:38:56 WRN] [TraceId:93257524cadacee8d7bee0d201ff5fc5] Resilience event occurred. EventName: 'OnRetry', Source: 'entra-id-entra-id//retry', Operation Key: 'null', Result: 'The operation didn't complete within the allowed timeout of '00:00:02'.'
+[15:38:58 ERR] [TraceId:93257524cadacee8d7bee0d201ff5fc5] Resilience event occurred. EventName: 'OnTimeout', Source: 'entra-id-entra-id//attempt-timeout', Operation Key: 'null', Result: 'null'
+[15:39:00 ERR] [TraceId:56ddff362a898b251783122984fd18d1] Resilience event occurred. EventName: 'OnTimeout', Source: 'entra-id-entra-id//attempt-timeout', Operation Key: 'null', Result: 'null'
+[15:39:00 WRN] [TraceId:56ddff362a898b251783122984fd18d1] Entra ID metadata request failed, retrying. Attempt 1 of 1, waiting 00:00:00. Outcome: The operation didn't complete within the allowed timeout of '00:00:02'.
+[15:39:00 WRN] [TraceId:56ddff362a898b251783122984fd18d1] Resilience event occurred. EventName: 'OnRetry', Source: 'entra-id-entra-id//retry', Operation Key: 'null', Result: 'The operation didn't complete within the allowed timeout of '00:00:02'.'
+[15:39:02 ERR] [TraceId:56ddff362a898b251783122984fd18d1] Resilience event occurred. EventName: 'OnCircuitOpened', Source: 'entra-id-entra-id//circuit-breaker', Operation Key: 'null', Result: 'The operation didn't complete within the allowed timeout of '00:00:02'.'
+[15:39:02 ERR] [TraceId:56ddff362a898b251783122984fd18d1] Resilience event occurred. EventName: 'OnTimeout', Source: 'entra-id-entra-id//attempt-timeout', Operation Key: 'null', Result: 'null'
+[15:39:03 ERR] [TraceId:58e72b3bb81b316fad11e59a8a8711e2] Entra ID circuit breaker OPENED for 00:00:05. Entra-issued tokens cannot be validated until it closes.
+[15:39:09 INF] [TraceId:58e72b3bb81b316fad11e59a8a8711e2] Entra ID circuit breaker half-open -- letting one trial request through.
+[15:39:09 WRN] [TraceId:d797b2b97c989128ea8a9c40af13df25] Resilience event occurred. EventName: 'OnCircuitHalfOpened', Source: 'entra-id-entra-id//circuit-breaker', Operation Key: 'null', Result: 'null'
+[15:39:11 ERR] [TraceId:58e72b3bb81b316fad11e59a8a8711e2] Entra ID circuit breaker OPENED for 00:00:05. Entra-issued tokens cannot be validated until it closes.
+[15:39:11 ERR] [TraceId:d797b2b97c989128ea8a9c40af13df25] Resilience event occurred. EventName: 'OnCircuitOpened', Source: 'entra-id-entra-id//circuit-breaker', Operation Key: 'null', Result: 'The operation didn't complete within the allowed timeout of '00:00:02'.'
+[15:39:11 ERR] [TraceId:d797b2b97c989128ea8a9c40af13df25] Resilience event occurred. EventName: 'OnTimeout', Source: 'entra-id-entra-id//attempt-timeout', Operation Key: 'null', Result: 'null'
+[15:39:11 INF] [TraceId:58e72b3bb81b316fad11e59a8a8711e2] Entra ID circuit breaker closed. Metadata requests are flowing again.
+[15:39:11 INF] [TraceId:f3f03f5da66012db12835030f825ddf4] Resilience event occurred. EventName: 'OnCircuitClosed', Source: 'entra-id-entra-id//circuit-breaker', Operation Key: 'null', Result: 'null'
+[15:39:11 WRN] [TraceId:d797b2b97c989128ea8a9c40af13df25] Entra ID metadata request failed, retrying. Attempt 1 of 1, waiting 00:00:00. Outcome: The operation didn't complete within the allowed timeout of '00:00:02'.
+[15:39:11 WRN] [TraceId:d797b2b97c989128ea8a9c40af13df25] Resilience event occurred. EventName: 'OnRetry', Source: 'entra-id-entra-id//retry', Operation Key: 'null', Result: 'The operation didn't complete within the allowed timeout of '00:00:02'.'
