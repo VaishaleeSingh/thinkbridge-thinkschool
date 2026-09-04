@@ -7,10 +7,12 @@ close again.
 
 ## GitHub Link
 
+Pull request: https://github.com/thinkbridge-thinkschool/VaishaleeSingh/pull/50
+
 Branch: `day22-polly-resilience-circuit-proof`
 
-- Docs and scripts: https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day22-polly-resilience-circuit-proof/Day22
-- Code: https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day22-polly-resilience-circuit-proof/Day7/piece2
+- Docs, script and verification output: `Day22/`
+- Code (pipeline, options, metrics, diagnostics, tests): `Day7/piece2/`
 
 ---
 
