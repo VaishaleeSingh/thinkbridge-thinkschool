@@ -1,0 +1,16 @@
+<Project>
+
+  <!-- One place for the settings every project in this solution shares, so a
+       new module cannot be created with a different target framework or with
+       nullable reference types quietly switched off. Day7/piece2 repeats these
+       across eight csproj files; the capstone starts with fourteen, which is
+       where that repetition stops being tolerable. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

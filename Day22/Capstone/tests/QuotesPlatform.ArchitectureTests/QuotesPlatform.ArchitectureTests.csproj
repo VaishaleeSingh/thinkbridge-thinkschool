@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- No ProjectReferences on purpose.
+       These tests read the .csproj FILES rather than inspecting compiled
+       assemblies, because assembly references are pruned by the compiler to
+       what the IL actually uses: a project reference that exists in the csproj
+       but is not yet used would be invisible to a reflection-based test, and
+       the whole point is to catch the reference the day it is added — before
+       anyone writes the code that uses it. -->
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" Version="7.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

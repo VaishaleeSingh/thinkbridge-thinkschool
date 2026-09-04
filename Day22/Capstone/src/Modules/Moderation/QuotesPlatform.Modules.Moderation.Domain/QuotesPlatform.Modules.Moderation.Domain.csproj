@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- DOMAIN: references SharedKernel and nothing else. No EF Core, no
+       Contracts, no Application.
+       Not Contracts either, deliberately: if the domain could reference an
+       integration event, the tempting shortcut is to raise one from inside an
+       entity — publishing a cross-module fact before the transaction that
+       makes it true has committed. Domain events (SharedKernel) are the inside
+       language; Application translates them into Contracts at the boundary. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\QuotesPlatform.SharedKernel\QuotesPlatform.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>
