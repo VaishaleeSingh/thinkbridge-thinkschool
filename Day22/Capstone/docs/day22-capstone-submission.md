@@ -6,13 +6,15 @@ public edition.
 
 ## Repo URL
 
+Pull request: https://github.com/thinkbridge-thinkschool/VaishaleeSingh/pull/51
+
 Branch: `day22-capstone-kickoff`
 
-- Capstone: https://github.com/thinkbridge-thinkschool/VaishaleeSingh/tree/day22-capstone-kickoff/Day22/Capstone
+- Capstone: `Day22/Capstone/`
 - One-page design: `Day22/Capstone/docs/capstone-design.md`
+- Layout and how to run it: `Day22/Capstone/README.md`
 
-*(Replace with the PR link once it is opened, the way Day 22 task 1 cites
-PR #50.)*
+(Day 22's other task, the Polly resilience work, is PR #50 — merged.)
 
 ---
 
