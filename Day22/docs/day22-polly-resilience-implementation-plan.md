@@ -6,6 +6,100 @@
 > a circuit breaker, a timeout, and a bulkhead. Then prove the circuit opens
 > under sustained failure and recovers.
 
+## What changed once it was built
+
+The plan above is kept as written. Nine things came out differently, and two of
+them are limits on the evidence rather than changes to the design.
+
+**1. `MaxRetryAttempts = 0` is not a legal value, so the breaker tests
+neutralise the retry differently.** The plan said the lifecycle test would run
+"with retry disabled for this pipeline instance so attempt counting stays
+honest". Polly validates `MaxRetryAttempts` as at least 1, so there is no
+"disabled" to configure. The tests send **POSTs** instead: the Day 22
+idempotency gate declines to retry them, so each call is exactly one attempt,
+which is the property the test actually needed. It also exercises the gate in
+the place where it matters. The circuit breaker is indifferent to the method — a
+503 is a failure whatever asked for it — so nothing about the breaker's
+behaviour is changed by the substitution.
+
+**2. "A bulkhead rejection must not count as a dependency failure" turned out to
+be structural, not a predicate.** The plan implied a predicate would exclude
+`RateLimiterRejectedException` from the breaker. It does not need one: the
+limiter sits outside both the retry and the breaker, so neither can ever see a
+rejection the limiter raised above them. That is a better guarantee than a
+predicate — there is nothing for a future edit to forget — but it is invisible
+in the code, which is exactly why `BulkheadTests` asserts it anyway.
+
+**3. The queue-wait histogram was dropped.** `resilience.bulkhead.queue.wait`
+was in the plan's instrument table and is not in `ResilienceMetrics`. Polly's
+rate-limiter strategy does not surface the permit wait, and measuring it would
+mean wrapping the limiter in a timing strategy of our own — at which point the
+number is our wrapper's latency, not the limiter's queue. An instrument that
+reports something adjacent to what its name claims is worse than no instrument,
+so `resilience.bulkhead.rejections` carries the whole story: shed or not shed.
+
+**4. `AddResilientHttpClients` has two overloads, and that is how the
+"Day 5 tests must pass unmodified" contract is actually enforced.** The Day 5
+unit tests build a bare `ServiceCollection` with no `IConfiguration` at all, so
+a signature that required one would have forced them to be edited — and editing
+them would have destroyed the only check that the options refactor preserved the
+policy. The no-argument overload binds nothing and therefore runs on
+`ResilienceOptions`' defaults, which are the Day 5 constants.
+`ResilienceOptionsValidationTests.Defaults_MatchTheDay5Policy_AndAreValid`
+asserts that equivalence directly, so the claim does not rest on reading two
+files side by side.
+
+**5. The idempotency gate defaults to NOT retrying when it cannot see the
+request.** An exception outcome carries no `HttpResponseMessage`, so the request
+has to come from the `ResilienceContext`. If it is unavailable there too, the
+pipeline does not know what it is about to repeat, and `IdempotencyPredicate`
+returns false. That direction is the decision: under-retrying costs latency on
+one request, over-retrying costs a duplicate write.
+
+**6. Recovery in the live script is demonstrated with the manual control, which
+is a weaker claim, and the script says so.** Repairing a dead authority
+mid-run — standing up a metadata document the JwtBearer handler will accept —
+is more machinery than a walkthrough script should carry. So `prove-circuit.ps1`
+closes the circuit through `CircuitBreakerManualControl` and prints, in the run
+output, that this demonstrates the manual control rather than recovery under a
+genuinely healed dependency. The real recovery proof is
+`Circuit_WhenDependencyRecovers_ClosesAgain`, where the stub is switched to
+healthy *before* the trial request, so the breaker has to find out by letting
+one through.
+
+**7. Two negative tests were added that the plan did not list, and they carry
+more weight than some of the positive ones.**
+`Circuit_WithFailuresBelowMinimumThroughput_StaysClosed` — without it, the
+opening test proves only that the breaker *can* open, not that the throughput
+guard does anything, and a breaker that opens on any two failures is the more
+damaging of the two misconfigurations. And
+`Permits_AreReleased_EvenWhenTheRequestFails` — a limiter that leaks permits
+degrades to `PermitLimit=0`, whose symptom is total, permanent failure of the
+dependency with nothing in the logs; releasing only on the success path is the
+shape that bug takes.
+
+**8. The planned integration test was not written.** `ResilienceDiagnosticsTests`
+would need a `QuotesApiFactory` variant that forces `Diagnostics:Enabled`,
+because the diagnostics group is Development-gated and the test host's
+environment is not something to assume. It would prove that the endpoint is
+mapped — worth having, and it is the one item from the plan's test list that is
+outstanding. Everything the proof actually rests on is in the unit suite, which
+is where the plan said the primary evidence would live.
+
+**9. Nothing here has been compiled or run.** There is no .NET SDK on either
+machine this was written from and no route to nuget.org, so the code is
+unverified by a compiler and the suite is unrun. Three things are the likely
+first failures, in order of probability:
+
+| Risk | If it fails |
+|---|---|
+| `ResilienceContext.GetRequestMessage()` — the accessor the gate uses for exception outcomes | Drop to `args.Outcome.Result?.RequestMessage` alone, accepting that a timed-out GET is then not retried, or register a second `no-retry` pipeline as the plan's fallback said |
+| `AddRateLimiter` / `HttpRateLimiterStrategyOptions` not resolving | `dotnet add QuotesApi package Polly.RateLimiting` — the plan flagged this as needing verification and it was not verifiable here |
+| `MinimumThroughput`/`SamplingDuration` lower bounds rejecting the test values | The test durations are already at Polly's documented 500ms floor; raise them and the tests get slower, not wrong |
+
+The measurement protocol, the acceptance criteria and the "what this will not
+prove" section below stand as written. None of them has been executed.
+
 ## Branch base
 
 Branched off `main` at `a07564d`, which contains Day 21 (PR #49 merged), so

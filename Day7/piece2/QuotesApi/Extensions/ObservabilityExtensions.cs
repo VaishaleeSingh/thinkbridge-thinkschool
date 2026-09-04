@@ -6,6 +6,7 @@ using OpenTelemetry.Trace;
 using QuotesApi.Caching;
 using QuotesApi.Messaging.Outbox;
 using QuotesApi.Observability;
+using QuotesApi.Resilience;
 
 namespace QuotesApi.Extensions;
 
@@ -98,7 +99,16 @@ public static class ObservabilityExtensions
             // other's question: a hit rate describes the cache, and only
             // db.commands describes the database.
             .AddMeter(CacheMetrics.MeterName)
-            .AddMeter(DbCommandCounterInterceptor.MeterName));
+            .AddMeter(DbCommandCounterInterceptor.MeterName)
+
+            // Day 22 -- the resilience pipeline's own instruments. The one
+            // that does not exist anywhere else is
+            // resilience.retries.suppressed: a retry DECLINED because the
+            // request was not idempotent is a non-event to Polly (no retry
+            // occurred, so its own telemetry emits nothing), which would
+            // leave a broken gate indistinguishable from a gate that is
+            // never triggered.
+            .AddMeter(ResilienceMetrics.MeterName));
 
         if (azureMonitorEnabled)
         {
