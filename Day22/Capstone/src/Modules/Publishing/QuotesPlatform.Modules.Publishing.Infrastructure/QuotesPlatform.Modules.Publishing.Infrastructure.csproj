@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- INFRASTRUCTURE: EF Core, the module's DbContext, repository
+       implementations of the Application's ports, and the module's DI
+       registration. Its schema is "publishing" and it declares no foreign key
+       to any other schema — see the design: a cross-schema FK is a join
+       waiting to be written, and a join across a boundary is the boundary
+       gone. -->
+  <ItemGroup>
+    <ProjectReference Include="..\QuotesPlatform.Modules.Publishing.Application\QuotesPlatform.Modules.Publishing.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+  </ItemGroup>
+
+</Project>

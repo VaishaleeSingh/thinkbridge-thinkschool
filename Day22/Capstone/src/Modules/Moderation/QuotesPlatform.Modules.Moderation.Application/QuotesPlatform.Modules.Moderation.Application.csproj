@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- APPLICATION: use cases, ports (interfaces) and the translation between
+       domain events and integration events. Depends on its own Domain and on
+       Contracts; knows nothing about EF Core or HTTP. -->
+  <ItemGroup>
+    <ProjectReference Include="..\QuotesPlatform.Modules.Moderation.Domain\QuotesPlatform.Modules.Moderation.Domain.csproj" />
+    <ProjectReference Include="..\..\..\QuotesPlatform.Contracts\QuotesPlatform.Contracts.csproj" />
+  </ItemGroup>
+
+
+</Project>

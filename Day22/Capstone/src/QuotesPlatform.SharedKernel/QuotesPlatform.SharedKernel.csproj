@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Base types only: no EF Core, no ASP.NET, no logging, no mediator.
+       A SharedKernel that references infrastructure is how every module ends
+       up depending on infrastructure, and the dependency is invisible because
+       nobody reads this file twice. ArchitectureTests asserts it stays clean. -->
+
+</Project>

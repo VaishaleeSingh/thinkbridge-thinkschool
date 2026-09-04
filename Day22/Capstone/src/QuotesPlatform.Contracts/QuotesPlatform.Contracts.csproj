@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- THE ONLY PROJECT TWO MODULES MAY BOTH REFERENCE.
+       It therefore carries records of ids and primitives and nothing else: no
+       entities, no enums owned by a module's domain, no EF Core. Every type in
+       here is a published contract, so a change to one is a breaking change to
+       somebody else's consumer — which is exactly the pressure that keeps
+       module internals out of it. -->
+
+</Project>

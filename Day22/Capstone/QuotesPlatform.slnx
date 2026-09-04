@@ -1,0 +1,19 @@
+<Solution>
+  <Project Path="src/QuotesPlatform.SharedKernel/QuotesPlatform.SharedKernel.csproj" />
+  <Project Path="src/QuotesPlatform.Contracts/QuotesPlatform.Contracts.csproj" />
+  <Project Path="src/Modules/Catalog/QuotesPlatform.Modules.Catalog.Domain/QuotesPlatform.Modules.Catalog.Domain.csproj" />
+  <Project Path="src/Modules/Catalog/QuotesPlatform.Modules.Catalog.Application/QuotesPlatform.Modules.Catalog.Application.csproj" />
+  <Project Path="src/Modules/Catalog/QuotesPlatform.Modules.Catalog.Infrastructure/QuotesPlatform.Modules.Catalog.Infrastructure.csproj" />
+  <Project Path="src/Modules/Curation/QuotesPlatform.Modules.Curation.Domain/QuotesPlatform.Modules.Curation.Domain.csproj" />
+  <Project Path="src/Modules/Curation/QuotesPlatform.Modules.Curation.Application/QuotesPlatform.Modules.Curation.Application.csproj" />
+  <Project Path="src/Modules/Curation/QuotesPlatform.Modules.Curation.Infrastructure/QuotesPlatform.Modules.Curation.Infrastructure.csproj" />
+  <Project Path="src/Modules/Publishing/QuotesPlatform.Modules.Publishing.Domain/QuotesPlatform.Modules.Publishing.Domain.csproj" />
+  <Project Path="src/Modules/Publishing/QuotesPlatform.Modules.Publishing.Application/QuotesPlatform.Modules.Publishing.Application.csproj" />
+  <Project Path="src/Modules/Publishing/QuotesPlatform.Modules.Publishing.Infrastructure/QuotesPlatform.Modules.Publishing.Infrastructure.csproj" />
+  <Project Path="src/Modules/Moderation/QuotesPlatform.Modules.Moderation.Domain/QuotesPlatform.Modules.Moderation.Domain.csproj" />
+  <Project Path="src/Modules/Moderation/QuotesPlatform.Modules.Moderation.Application/QuotesPlatform.Modules.Moderation.Application.csproj" />
+  <Project Path="src/Modules/Moderation/QuotesPlatform.Modules.Moderation.Infrastructure/QuotesPlatform.Modules.Moderation.Infrastructure.csproj" />
+  <Project Path="src/QuotesPlatform.Host/QuotesPlatform.Host.csproj" />
+  <Project Path="tests/QuotesPlatform.ArchitectureTests/QuotesPlatform.ArchitectureTests.csproj" />
+  <Project Path="tests/QuotesPlatform.Modules.Curation.Domain.Tests/QuotesPlatform.Modules.Curation.Domain.Tests.csproj" />
+</Solution>
