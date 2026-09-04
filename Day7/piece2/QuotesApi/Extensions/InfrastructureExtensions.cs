@@ -269,7 +269,12 @@ public static class InfrastructureExtensions
         // Named options, not the unnamed default: JwtBearerOptions is
         // registered per scheme, and configuring the unnamed instance would
         // silently do nothing to the "EntraId" scheme.
-        services.AddResilientHttpClients();
+        // Day 22: the configuration is passed now, because every policy
+        // parameter is bound from the "Resilience" section instead of being an
+        // inline constant. That is what makes the circuit breaker testable in
+        // under a second -- and therefore provable -- rather than a ten second
+        // sleep nobody was willing to put in CI.
+        services.AddResilientHttpClients(configuration);
 
         services
             .AddOptions<JwtBearerOptions>("EntraId")

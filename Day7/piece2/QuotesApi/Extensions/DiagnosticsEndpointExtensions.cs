@@ -1,8 +1,12 @@
 using System.Diagnostics;
 using Dapper;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Polly.CircuitBreaker;
+using Polly.RateLimiting;
 using QuotesApi.Data;
 using QuotesApi.Models;
+using QuotesApi.Resilience;
 
 namespace QuotesApi.Extensions;
 
@@ -555,6 +559,233 @@ public static class DiagnosticsEndpointExtensions
                     title: "Could not read the dead-letter queue.",
                     detail: "See the application logs for the failure detail.",
                     statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
+        // ------------------------------------------------------------------
+        // Day 22 -- Resilience state  (Development-gated)
+        // ------------------------------------------------------------------
+        // What the circuit breaker is doing right now, plus the counters the
+        // Day 22 proof is read from.
+        //
+        // WHY THIS IS THE INSTRUMENT AND NOT THE LOGS. Day 5's breaker logged
+        // three messages and was otherwise invisible: nothing could ask it
+        // "are you open?". A live demonstration then had to infer its state
+        // from response latency, and an inference is not evidence -- a slow
+        // response, a shed request and an open circuit are indistinguishable
+        // from the outside. CircuitBreakerStateProvider reports the state
+        // directly, so the run recorded in Day22/verification is a reading
+        // rather than an interpretation.
+        //
+        // Read-only, and no connection strings or token material: state, and
+        // counts.
+        group.MapGet("/resilience", (
+            CircuitBreakerRegistry circuitBreaker,
+            ResilienceMetrics metrics,
+            IOptions<ResilienceOptions> options) =>
+        {
+            var o = options.Value;
+
+            return Results.Ok(new
+            {
+                circuitState = circuitBreaker.StateName,
+                circuitStateValue = circuitBreaker.StateAsGaugeValue,
+
+                transitions = new
+                {
+                    opened = metrics.CircuitOpened,
+                    halfOpened = metrics.CircuitHalfOpened,
+                    closed = metrics.CircuitClosed
+                },
+
+                retries = metrics.Retries,
+
+                // Read this one next to retries, always. A zero here with a
+                // non-zero retries count means every failure that was retried
+                // was idempotent; a non-zero here is the gate refusing to
+                // repeat a write, which is the only evidence the gate exists.
+                retriesSuppressed = metrics.RetriesSuppressed,
+
+                bulkheadRejections = metrics.BulkheadRejections,
+
+                policy = new
+                {
+                    totalTimeout = o.TotalTimeout,
+                    attemptTimeout = o.AttemptTimeout,
+                    retryAttempts = o.Retry.MaxAttempts,
+                    retryBaseDelay = o.Retry.BaseDelay,
+                    idempotentOnly = o.Retry.IdempotentOnly,
+                    failureRatio = o.CircuitBreaker.FailureRatio,
+                    minimumThroughput = o.CircuitBreaker.MinimumThroughput,
+                    samplingDuration = o.CircuitBreaker.SamplingDuration,
+                    breakDuration = o.CircuitBreaker.BreakDuration,
+                    bulkheadPermits = o.Bulkhead.PermitLimit,
+                    bulkheadQueue = o.Bulkhead.QueueLimit
+                }
+            });
+        });
+
+        // Trips the circuit by hand, for a live walkthrough that should not
+        // require making login.microsoftonline.com fail.
+        //
+        // THIS IS NOT THE PROOF, and it is worth being blunt about why:
+        // isolating a breaker through its manual control demonstrates that the
+        // manual control works. It says nothing about whether SUSTAINED
+        // FAILURE opens the circuit, which is the actual Day 22 claim. That
+        // claim is proven by CircuitBreakerLifecycleTests driving real
+        // failures through the real strategy and asserting on the state
+        // provider. This route exists for demonstration convenience only.
+        //
+        // POST, because it mutates state -- and Development-gated with
+        // everything else in this group.
+        group.MapPost("/resilience/isolate", async (
+            CircuitBreakerRegistry circuitBreaker,
+            CancellationToken cancellationToken) =>
+        {
+            await circuitBreaker.ManualControl.IsolateAsync(cancellationToken);
+
+            return Results.Ok(new
+            {
+                circuitState = circuitBreaker.StateName,
+                note = "Isolated by hand. This demonstrates the manual control, NOT that "
+                     + "sustained failure opens the circuit -- see CircuitBreakerLifecycleTests "
+                     + "for that. Isolated is sticky: it stays isolated until /resilience/close."
+            });
+        });
+
+        group.MapPost("/resilience/close", async (
+            CircuitBreakerRegistry circuitBreaker,
+            CancellationToken cancellationToken) =>
+        {
+            await circuitBreaker.ManualControl.CloseAsync(cancellationToken);
+
+            return Results.Ok(new { circuitState = circuitBreaker.StateName });
+        });
+
+        // ------------------------------------------------------------------
+        // Day 22 -- Resilience probe  (Development-gated)
+        // ------------------------------------------------------------------
+        // Issues one outbound GET through the SAME named client and the SAME
+        // Polly pipeline the Entra ID backchannel uses, against a URL the
+        // caller chooses, and reports what the pipeline did with it.
+        //
+        // WHY THIS EXISTS, because a probe endpoint can easily be a test
+        // fixture leaking into production code and this one has to justify
+        // itself:
+        //
+        // The obvious way to make the live run fail is to point
+        // AzureAd:Authority at a dead address. Two things defeat that, and
+        // both were found by trying it rather than by reasoning about it:
+        //
+        //   1. JwtBearer refuses to INITIALIZE with an http:// authority
+        //      ("The MetadataAddress or Authority must use HTTPS unless
+        //      disabled for development by setting RequireHttpsMetadata =
+        //      false"), and throws from PostConfigure -- before any network
+        //      call. Every request then fails in 3ms having touched nothing,
+        //      which looks like a broken pipeline and is not one.
+        //
+        //   2. Fixed by using https://, the deeper problem appears:
+        //      ConfigurationManager CACHES a failed metadata retrieval for its
+        //      refresh interval. A burst of N requests therefore produces one
+        //      HTTP attempt, not N, and the breaker never sees enough failures
+        //      to open. The experiment would be measuring
+        //      ConfigurationManager's caching, not the circuit breaker.
+        //
+        // Both are properties of the CALLER, not of the pipeline. So the probe
+        // removes the caller: it drives the pipeline directly, which is the
+        // thing Day 22 is making a claim about. The breaker instance is shared
+        // -- one named client, one handler chain, one CircuitBreakerRegistry --
+        // so a circuit opened through this probe IS the circuit that protects
+        // token validation.
+        //
+        // Development-gated with everything else in this group, GET and
+        // side-effect-free apart from the pipeline state it deliberately
+        // exercises.
+        group.MapGet("/resilience/probe", async (
+            string? url,
+            IHttpClientFactory httpClientFactory,
+            CancellationToken cancellationToken) =>
+        {
+            // Default: a port nothing listens on, so the failure is a
+            // connection refusal -- fast, unambiguous, and entirely local. No
+            // load is generated against anyone else's service.
+            var target = string.IsNullOrWhiteSpace(url)
+                ? "http://127.0.0.1:59999/probe"
+                : url;
+
+            // LOOPBACK ONLY, and this is a security control rather than a
+            // convenience check.
+            //
+            // Left open, this endpoint takes a URL from the caller and makes
+            // the server fetch it -- textbook SSRF. The Development gate on
+            // this whole group is a real mitigation but not a sufficient one,
+            // because Diagnostics:Enabled exists as an escape hatch and one
+            // day somebody will set it in an environment that has a managed
+            // identity. At that point ?url=http://169.254.169.254/metadata/...
+            // turns a resilience demo into a credential-disclosure endpoint.
+            //
+            // The probe needs exactly one capability: fail to connect to
+            // something local. Loopback covers that completely, so nothing is
+            // lost by refusing everything else.
+            if (!Uri.TryCreate(target, UriKind.Absolute, out var targetUri)
+                || !targetUri.IsLoopback
+                || (targetUri.Scheme != Uri.UriSchemeHttp && targetUri.Scheme != Uri.UriSchemeHttps))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "The probe target must be an absolute http/https loopback URL "
+                          + "(127.0.0.1, localhost or [::1]). This endpoint makes the server issue "
+                          + "the request, so an arbitrary target would be a server-side request "
+                          + "forgery vector."
+                });
+            }
+
+            var client = httpClientFactory.CreateClient(ResilienceExtensions.EntraIdClientName);
+            var stopwatch = Stopwatch.StartNew();
+
+            try
+            {
+                using var response = await client.GetAsync(target, cancellationToken);
+                stopwatch.Stop();
+
+                return Results.Ok(new
+                {
+                    outcome = "completed",
+                    status = (int)response.StatusCode,
+                    elapsedMs = stopwatch.ElapsedMilliseconds
+                });
+            }
+            catch (BrokenCircuitException)
+            {
+                // The interesting case. Note the elapsed time: this is the
+                // number that makes a circuit breaker worth having.
+                stopwatch.Stop();
+                return Results.Ok(new
+                {
+                    outcome = "circuit-open",
+                    status = (int?)null,
+                    elapsedMs = stopwatch.ElapsedMilliseconds
+                });
+            }
+            catch (RateLimiterRejectedException)
+            {
+                stopwatch.Stop();
+                return Results.Ok(new
+                {
+                    outcome = "bulkhead-rejected",
+                    status = (int?)null,
+                    elapsedMs = stopwatch.ElapsedMilliseconds
+                });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                return Results.Ok(new
+                {
+                    outcome = ex.GetType().Name,
+                    status = (int?)null,
+                    elapsedMs = stopwatch.ElapsedMilliseconds
+                });
             }
         });
 

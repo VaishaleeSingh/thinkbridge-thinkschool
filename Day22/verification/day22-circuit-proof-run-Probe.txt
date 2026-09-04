@@ -1,0 +1,42 @@
+Day 22 -- circuit breaker proof run
+[15:38:45.733] PowerShell 5.1.26100.9168
+[15:38:45.741] Policy for this run: MinimumThroughput=6 BreakDuration=00:00:05
+[15:38:45.751] Mode: Probe
+[15:38:45.762] Probe target: http://127.0.0.1:59999/probe (nothing listens there -- this is the injected failure)
+[15:38:45.785] Waiting for the API to answer /health ...
+[15:38:50.541] API is up on http://127.0.0.1:5185
+[15:38:50.580] before any load          circuit=Closed    opened=0 halfOpened=0 closed=0 retries=0 suppressed=0 shed=0
+[15:38:50.585] Driving 12 requests (Probe mode) ...
+[15:38:54.821]   request  1  TimeoutRejectedException   4143 ms
+[15:38:58.929]   request  2  TimeoutRejectedException   4095 ms
+[15:39:03.035]   request  3  TimeoutRejectedException   4100 ms
+[15:39:03.055]   request  4  circuit-open                 15 ms
+[15:39:03.071]   request  5  circuit-open                 14 ms
+[15:39:03.090]   request  6  circuit-open                 11 ms
+[15:39:03.104]   request  7  circuit-open                  8 ms
+[15:39:03.112]   request  8  circuit-open                  4 ms
+[15:39:03.128]   request  9  circuit-open                  6 ms
+[15:39:03.137]   request 10  circuit-open                  8 ms
+[15:39:03.184]   request 11  circuit-open                 13 ms
+[15:39:03.205]   request 12  circuit-open                 14 ms
+[15:39:03.210] after sustained failure  circuit=Open      opened=1 halfOpened=0 closed=0 retries=3 suppressed=0 shed=0
+[15:39:03.253] open-circuit request: circuit-open in 16 ms (the first request of the run cost 4143 ms)
+[15:39:03.259] Waiting past BreakDuration (00:00:05), dependency still dead ...
+[15:39:09.283] Bursting 8 concurrent requests -- half-open must admit exactly one ...
+[15:39:11.390]   burst 1  circuit-open             2077 ms  ADMITTED (paid the attempt timeout)
+[15:39:11.398]   burst 2  circuit-open               31 ms  rejected
+[15:39:11.420]   burst 3  circuit-open                9 ms  rejected
+[15:39:11.437]   burst 4  circuit-open               14 ms  rejected
+[15:39:11.458]   burst 5  circuit-open               17 ms  rejected
+[15:39:11.474]   burst 6  circuit-open               23 ms  rejected
+[15:39:11.587]   burst 7  circuit-open               27 ms  rejected
+[15:39:11.618]   burst 8  circuit-open               35 ms  rejected
+[15:39:11.639] half-open burst: 1 admitted, 7 rejected, 0 faulted (threshold 1000 ms)
+[15:39:11.647] after half-open burst    circuit=Open      opened=2 halfOpened=1 closed=0 retries=4 suppressed=0 shed=0
+[15:39:11.658] Repairing the dependency -- pointing the authority at a real metadata document is out of
+[15:39:11.670] scope for an unattended script, so recovery is shown with the manual control instead.
+[15:39:11.688] That is a WEAKER claim, stated as such: it demonstrates the manual control, not recovery
+[15:39:11.704] under a genuinely healed dependency. The proof of that is CircuitBreakerLifecycleTests.
+[15:39:11.737] after manual close       circuit=Closed    opened=2 halfOpened=1 closed=1 retries=4 suppressed=0 shed=0
+[15:39:11.737] Raw run written to Day22/verification/day22-circuit-proof-run-Probe.txt
+[15:39:11.769] Stopping the API (pid 27092)
