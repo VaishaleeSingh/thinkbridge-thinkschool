@@ -61,7 +61,7 @@ public class QuotesDbContext : DbContext
                 .IsRequired()
                 .HasMaxLength(500);
 
-            entity.HasIndex(x => x.Author);
+            entity.HasIndex(x => new { x.Author, x.Text }).IsUnique();
         });
 
         modelBuilder.Entity<Collection>(entity =>
