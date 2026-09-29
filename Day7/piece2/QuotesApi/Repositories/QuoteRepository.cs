@@ -68,6 +68,21 @@ public class QuoteRepository : IQuoteRepository
             .FirstOrDefaultAsync(q => q.Id == id, cancellationToken);
     }
 
+    public async Task<bool> ExistsAsync(
+        string author,
+        string text,
+        int? excludeId,
+        CancellationToken cancellationToken)
+    {
+        return await _db.Quotes
+            .AsNoTracking()
+            .AnyAsync(
+                q => q.Author == author
+                    && q.Text == text
+                    && (excludeId == null || q.Id != excludeId),
+                cancellationToken);
+    }
+
     public async Task<Quote> AddAsync(
         Quote quote,
         CancellationToken cancellationToken)

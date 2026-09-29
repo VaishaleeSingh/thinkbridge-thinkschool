@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using QuotesApi.Authorization;
 using QuotesApi.Models;
 using QuotesApi.Caching;
@@ -106,6 +107,7 @@ public static class QuoteEndpointExtensions
         // attempt can be checked against it — see MustOwnQuoteHandler.
         group.MapPost("/", async (
             CreateQuoteRequest request,
+            IQuoteRepository repository,
             IQuoteWriteService writeService,
             IQuoteTextNormalizer normalizer,
             ClaimsPrincipal user,
@@ -160,6 +162,13 @@ public static class QuoteEndpointExtensions
                 callerId,
                 request.BackgroundImageUrl);
 
+            // Checked against the NORMALIZED values, so "  Be  kind " and
+            // "Be kind" count as the same quote. The unique index on
+            // (Author, Text) is the backstop for two identical requests that
+            // both pass this check at the same moment -- see the catch below.
+            if (await repository.ExistsAsync(quote.Author, quote.Text, null, cancellationToken))
+                return DuplicateQuote();
+
             // Day 20 -- one call, one transaction: the quote row and the
             // QuoteCreated outbox row commit together or not at all.
             //
@@ -176,10 +185,24 @@ public static class QuoteEndpointExtensions
             // loses nothing. Before Day 20 the publish deliberately used
             // CancellationToken.None, because by then the write WAS committed
             // and a client disconnect would otherwise have dropped the event.
-            var created = await writeService.CreateAsync(
-                quote,
-                callerId,
-                cancellationToken);
+            Quote created;
+            try
+            {
+                created = await writeService.CreateAsync(
+                    quote,
+                    callerId,
+                    cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                // Lost the race: another request inserted the same quote
+                // between the check above and this insert, and the unique
+                // index rejected ours. Any other DbUpdateException rethrows.
+                if (await repository.ExistsAsync(quote.Author, quote.Text, null, CancellationToken.None))
+                    return DuplicateQuote();
+
+                throw;
+            }
 
             return Results.Created(
                 $"/api/quotes/{created.Id}",
@@ -260,6 +283,11 @@ public static class QuoteEndpointExtensions
                 request.BackgroundImageUrl,
                 $"{normalizedAuthor}|{normalizedText}");
 
+            // Editing a quote into a copy of ANOTHER quote is a duplicate too;
+            // saving it unchanged is not, hence excluding its own id.
+            if (await repository.ExistsAsync(normalizedAuthor, normalizedText, id, cancellationToken))
+                return DuplicateQuote();
+
             var callerId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
                 ?? user.FindFirst("sub")?.Value;
 
@@ -332,6 +360,22 @@ public static class QuoteEndpointExtensions
 
         return app;
     }
+
+    // 409 rather than 400: the request is well-formed, it just collides with
+    // a quote that already exists. Keyed on "text" so the client can show it
+    // under the field the user needs to change.
+    private static IResult DuplicateQuote() =>
+        Results.Problem(
+            title: "Duplicate quote",
+            detail: "This author already has a quote with this exact text.",
+            statusCode: StatusCodes.Status409Conflict,
+            extensions: new Dictionary<string, object?>
+            {
+                ["errors"] = new Dictionary<string, string[]>
+                {
+                    ["text"] = new[] { "This author already has a quote with this exact text." }
+                }
+            });
 }
 
 /// <summary>Shape of the JSON body for POST /api/quotes.</summary>
